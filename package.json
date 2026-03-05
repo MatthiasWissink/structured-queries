@@ -1,6 +1,6 @@
 {
   "name": "structured-queries",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Type-safe, hierarchical query options factories for TanStack Query — define and organise your queries as a structured, composable tree.",
   "keywords": [
     "tanstack-query",
