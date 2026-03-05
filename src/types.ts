@@ -6,7 +6,6 @@ import type {
   InfiniteData,
   QueryFunction,
   QueryKey,
-  SkipToken,
 } from '@tanstack/query-core'
 import type { UseInfiniteQueryOptions, UseQueryOptions } from '@tanstack/react-query'
 
@@ -23,7 +22,7 @@ export type QueryNodeOptions = Omit<UseQueryOptions, 'queryKey'>
 
 /** Leaf node: has queryFn (required), no children */
 export type LeafDefinition<TData = unknown> = {
-  queryFn: QueryFunction<TData> | SkipToken
+  queryFn: QueryFunction<TData>
 } & Omit<QueryNodeOptions, 'queryFn'>
 
 /** Infinite query leaf node: has queryFn, initialPageParam, getNextPageParam */
@@ -44,15 +43,16 @@ export type ScopeDefinition<
 
 /** Dynamic (parameterised) node: a function returning a leaf/scope definition */
 export type DynamicDefinition<
-  TParam = unknown,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TArgs extends any[] = any[],
   TKey extends readonly [unknown, ...unknown[]] = readonly [unknown, ...unknown[]],
   TChildren extends Record<string, NodeDefinition> = Record<string, NodeDefinition>,
-> = (param: TParam) => {
+> = (...args: TArgs) => {
   queryKey: TKey
   subQueries?: TChildren
 } & Omit<QueryNodeOptions, 'queryFn'> & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    queryFn?: QueryFunction<any, any, any> | SkipToken
+    queryFn?: QueryFunction<any, any, any>
   }
 
 /** Recursive children record (interface to allow self-referencing NodeDefinition) */
@@ -68,7 +68,7 @@ export type NodeDefinition =
   | InfiniteLeafDefinition<any, any>
   | ScopeDefinition<NodeDefinitionRecord>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | DynamicDefinition<any, readonly [unknown, ...unknown[]], NodeDefinitionRecord>
+  | DynamicDefinition<any[], readonly [unknown, ...unknown[]], NodeDefinitionRecord>
 
 // ---------------------------------------------------------------------------
 // Sub-query namespace: $sub groups child queries for discoverability
@@ -84,10 +84,11 @@ export type SubQueryNamespace<T> = keyof T extends never ? {} : { $sub: T }
 
 /**
  * A dynamic (parameterised) query node in the output tree.
- * Callable with a parameter; also exposes .queryKey for partial-key invalidation.
+ * Callable with parameters; also exposes .queryKey for partial-key invalidation.
  */
-export type DynamicQueryNode<TKey extends readonly unknown[], TParam, TResolved> = ((
-  param: TParam,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type DynamicQueryNode<TKey extends readonly unknown[], TArgs extends any[], TResolved> = ((
+  ...args: TArgs
 ) => TResolved) & {
   queryKey: DataTag<TKey, unknown, DefaultError>
 }
@@ -109,12 +110,10 @@ type ExtractQueryFn<T> = T extends { queryFn: infer F }
     ? F
     : never
 
-/** Extract data type from a node definition, handling SkipToken unions and infinite query pageParam */
+/** Extract data type from a node definition, handling infinite query pageParam */
 type ExtractData<T> =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Exclude<ExtractQueryFn<T>, SkipToken | undefined> extends QueryFunction<infer D, any, any>
-    ? D
-    : unknown
+  Exclude<ExtractQueryFn<T>, undefined> extends QueryFunction<infer D, any, any> ? D : unknown
 
 /** Check if a definition is an infinite query (has initialPageParam) */
 type IsInfiniteDefinition<T> = T extends { initialPageParam: unknown } ? true : false
@@ -122,23 +121,31 @@ type IsInfiniteDefinition<T> = T extends { initialPageParam: unknown } ? true : 
 /** Extract the page param type from an infinite query definition */
 type ExtractPageParam<T> = T extends { initialPageParam: infer P } ? P : never
 
-/** Resolve a static node to either UseInfiniteQueryOptions or UseQueryOptions */
+/** Resolve a static node to either UseInfiniteQueryOptions or UseQueryOptions, excluding SkipToken from queryFn */
 type ResolveStaticNode<TDef, TKey extends readonly unknown[]> =
   IsInfiniteDefinition<TDef> extends true
-    ? UseInfiniteQueryOptions<
-        ExtractData<TDef>,
-        DefaultError,
-        InfiniteData<ExtractData<TDef>, ExtractPageParam<TDef>>,
-        TKey & QueryKey,
-        ExtractPageParam<TDef>
+    ? Omit<
+        UseInfiniteQueryOptions<
+          ExtractData<TDef>,
+          DefaultError,
+          InfiniteData<ExtractData<TDef>, ExtractPageParam<TDef>>,
+          TKey & QueryKey,
+          ExtractPageParam<TDef>
+        >,
+        'queryFn'
       > & {
+        queryFn: QueryFunction<ExtractData<TDef>, TKey & QueryKey, ExtractPageParam<TDef>>
         queryKey: DataTag<
           TKey,
           InfiniteData<ExtractData<TDef>, ExtractPageParam<TDef>>,
           DefaultError
         >
       } & SubQueryNamespace<BuildTree<TKey, ExtractSubQueries<TDef>>>
-    : UseQueryOptions<ExtractData<TDef>, DefaultError, ExtractData<TDef>, TKey & QueryKey> & {
+    : Omit<
+        UseQueryOptions<ExtractData<TDef>, DefaultError, ExtractData<TDef>, TKey & QueryKey>,
+        'queryFn'
+      > & {
+        queryFn: QueryFunction<ExtractData<TDef>, TKey & QueryKey>
         queryKey: DataTag<TKey, ExtractData<TDef>, DefaultError>
       } & SubQueryNamespace<BuildTree<TKey, ExtractSubQueries<TDef>>>
 
@@ -151,11 +158,11 @@ export type BuildTree<
   TParentKey extends readonly unknown[],
   TDef extends Record<string, unknown>,
 > = {
-  [K in keyof TDef]: TDef[K] extends (param: infer P) => infer R
+  [K in keyof TDef]: TDef[K] extends (...args: infer A extends unknown[]) => infer R
     ? R extends { queryKey: infer QK extends readonly unknown[] }
       ? DynamicQueryNode<
           readonly [...TParentKey, K],
-          P,
+          A,
           ResolveStaticNode<R, readonly [...TParentKey, K, ...QK]>
         >
       : never
@@ -218,7 +225,7 @@ type CollectKeys<T> = T extends { queryKey: infer K }
       | {
           [P in keyof T & string]: T[P] extends { queryKey: unknown }
             ? CollectKeys<T[P]>
-            : T[P] extends (param: infer _TParam) => infer R
+            : T[P] extends (...args: infer _TArgs) => infer R
               ? StripDataTag<(T[P] & { queryKey: unknown })['queryKey']> | CollectKeys<R>
               : never
         }[keyof T & string]

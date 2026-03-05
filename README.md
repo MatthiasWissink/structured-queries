@@ -326,6 +326,22 @@ All standard TanStack Query options are supported on any node:
 }
 ```
 
+### `skipToken` Is Not Supported
+
+`structured-queries` does not support TanStack Query's `skipToken` in `queryFn`. This is intentional — excluding `skipToken` from the resolved types ensures that every node is directly compatible with `useSuspenseQuery`, `useSuspenseInfiniteQuery`, and other APIs that require a real `queryFn`.
+
+Use the `enabled` option instead to conditionally disable a query:
+
+```ts
+const todos = createQueryOptions('todos', {
+  byId: (id: string | undefined) => ({
+    queryKey: [id ?? 'none'],
+    queryFn: () => fetch(`/api/todos/${id}`).then((r) => r.json()),
+    enabled: !!id,
+  }),
+})
+```
+
 ## TypeScript
 
 ### Exported Types

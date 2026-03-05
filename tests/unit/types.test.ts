@@ -1,5 +1,4 @@
 import { describe, it, expectTypeOf } from 'vitest'
-import { skipToken } from '@tanstack/react-query'
 import type { InfiniteData, dataTagSymbol } from '@tanstack/query-core'
 import { createQueryOptions } from '../../src/index'
 import type { inferQueryKeys } from '../../src/index'
@@ -73,18 +72,15 @@ describe('type-level tests for createQueryOptions', () => {
 
   it('static leaf data type inferred from queryFn', () => {
     const qf = tags.all.queryFn
-    expectTypeOf(qf).not.toBeUndefined()
-    if (qf) expectTypeOf(qf).returns.resolves.toEqualTypeOf<string[]>()
+    expectTypeOf(qf).returns.resolves.toEqualTypeOf<string[]>()
   })
 
   it('parameterised node data type inferred from queryFn', () => {
     const qf = tags.byId('123').queryFn
-    expectTypeOf(qf).not.toBeUndefined()
-    if (qf)
-      expectTypeOf(qf).returns.resolves.toEqualTypeOf<{
-        id: string
-        name: string
-      }>()
+    expectTypeOf(qf).returns.resolves.toEqualTypeOf<{
+      id: string
+      name: string
+    }>()
   })
 
   it('multi-segment dynamic key types', () => {
@@ -111,38 +107,6 @@ describe('type-level tests for createQueryOptions', () => {
     const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo'] as const
     const _version: Keys = ['tags', 'byId', '123', 'version'] as const
     const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2] as const
-  })
-})
-
-describe('skipToken type inference', () => {
-  it('infers data type when queryFn is conditionally skipToken (dynamic node)', () => {
-    const queries = createQueryOptions('items', {
-      detail: (id: string | undefined) => ({
-        queryKey: [id ?? 'none'],
-        queryFn: id ? () => Promise.resolve({ id, name: 'test' }) : skipToken,
-      }),
-    })
-
-    const resolved = queries.detail('abc')
-    const qf = resolved.queryFn
-    expectTypeOf(qf).not.toBeUndefined()
-    if (qf && qf !== skipToken) {
-      expectTypeOf(qf).returns.resolves.toEqualTypeOf<{ id: string; name: string }>()
-    }
-  })
-
-  it('infers data type when queryFn is conditionally skipToken (static node)', () => {
-    const enabled = true as boolean
-    const queries = createQueryOptions('items', {
-      all: {
-        queryFn: enabled ? () => Promise.resolve(['a', 'b']) : skipToken,
-      },
-    })
-
-    const qf = queries.all.queryFn
-    if (qf && qf !== skipToken) {
-      expectTypeOf(qf).returns.resolves.toEqualTypeOf<string[]>()
-    }
   })
 })
 
