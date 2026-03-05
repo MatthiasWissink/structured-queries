@@ -3,10 +3,10 @@ export { mergeQueryOptions } from './merge.js'
 export type {
   QueryNodeOptions,
   LeafDefinition,
+  InfiniteLeafDefinition,
   ScopeDefinition,
   DynamicDefinition,
   NodeDefinition,
-  StaticQueryNode,
   DynamicQueryNode,
   StructuredQuery,
   MergedQuery,

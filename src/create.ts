@@ -1,6 +1,19 @@
 import type { DataTag, DefaultError } from '@tanstack/query-core'
 import type { BuildTree, NodeDefinition } from './types.js'
 
+/** Resolve a node's options by attaching queryKey (and queryFn when present). */
+function resolveNodeOptions(
+  queryKey: readonly unknown[],
+  queryFn: unknown,
+  rest: Record<string, unknown>,
+): Record<string, unknown> {
+  rest.queryKey = queryKey
+  if (queryFn) {
+    rest.queryFn = queryFn
+  }
+  return rest
+}
+
 /** Attach recursively-built sub-queries to a resolved node under `$sub`. */
 function attachSubQueries(
   resolved: Record<string, unknown>,
@@ -33,13 +46,10 @@ function buildNode(
   if (typeof definition === 'function') {
     const caller = (param: unknown) => {
       const result = (definition as unknown as (param: unknown) => Record<string, unknown>)(param)
-      const { queryKey: paramSegments, subQueries, ...rest } = result
+      const { queryKey: paramSegments, subQueries, queryFn, ...rest } = result
       const fullKey = [...nodeKey, ...(paramSegments as unknown[])] as readonly unknown[]
 
-      const resolved: Record<string, unknown> = {
-        ...rest,
-        queryKey: fullKey,
-      }
+      const resolved = resolveNodeOptions(fullKey, queryFn, rest)
 
       attachSubQueries(resolved, fullKey, subQueries)
 
@@ -53,11 +63,8 @@ function buildNode(
   }
 
   // Static node (leaf or scope)
-  const { subQueries, ...rest } = definition as unknown as Record<string, unknown>
-  const resolved: Record<string, unknown> = {
-    ...rest,
-    queryKey: nodeKey,
-  }
+  const { subQueries, queryFn, ...rest } = definition as unknown as Record<string, unknown>
+  const resolved = resolveNodeOptions(nodeKey, queryFn, rest)
 
   attachSubQueries(resolved, nodeKey, subQueries)
 

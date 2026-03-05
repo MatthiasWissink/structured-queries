@@ -1,56 +1,44 @@
 import type {
   DataTag,
   DefaultError,
+  GetNextPageParamFunction,
+  GetPreviousPageParamFunction,
+  InfiniteData,
   QueryFunction,
   QueryKey,
-  QueryObserverOptions,
-  QueryOptions,
+  SkipToken,
 } from '@tanstack/query-core'
+import type { UseInfiniteQueryOptions, UseQueryOptions } from '@tanstack/react-query'
 
 // ---------------------------------------------------------------------------
 // Input: Node Definitions (what users provide to createQueryOptions)
 // ---------------------------------------------------------------------------
 
 /**
- * Simplified observer options with scalar types instead of generic function overloads.
- * Keys are validated against QueryObserverOptions at compile time via _AssertObserverKeys.
+ * Query options that can be attached to any node definition.
+ * Derived from TanStack Query's UseQueryOptions, omitting only queryKey
+ * (which is managed by the structured query tree). Includes queryFn as optional.
  */
-type SimplifiedObserverOptions = {
-  staleTime?: number
-  enabled?: boolean
-  refetchInterval?: number | false
-  refetchIntervalInBackground?: boolean
-  refetchOnWindowFocus?: boolean | 'always'
-  refetchOnReconnect?: boolean | 'always'
-  refetchOnMount?: boolean | 'always'
-  retryOnMount?: boolean
-}
+export type QueryNodeOptions = Omit<UseQueryOptions, 'queryKey'>
 
-/** Compile-time assertion: every key in SimplifiedObserverOptions must exist on QueryObserverOptions */
-type _AssertObserverKeys = Pick<QueryObserverOptions, keyof SimplifiedObserverOptions>
-
-/**
- * Query options from TanStack Query that can be attached to any node.
- * Base options from QueryOptions (retry, gcTime, etc.) plus commonly-used
- * observer options with simplified types (avoiding generic function overloads).
- */
-export type QueryNodeOptions = Omit<
-  QueryOptions,
-  'queryKey' | 'queryFn' | 'queryHash' | 'queryKeyHashFn' | '_defaulted' | 'behavior' | 'persister'
-> &
-  SimplifiedObserverOptions
-
-/** Leaf node: has queryFn, no children */
+/** Leaf node: has queryFn (required), no children */
 export type LeafDefinition<TData = unknown> = {
-  queryFn: QueryFunction<TData>
-} & QueryNodeOptions
+  queryFn: QueryFunction<TData> | SkipToken
+} & Omit<QueryNodeOptions, 'queryFn'>
+
+/** Infinite query leaf node: has queryFn, initialPageParam, getNextPageParam */
+export type InfiniteLeafDefinition<TData = unknown, TPageParam = unknown> = {
+  queryFn: QueryFunction<TData, QueryKey, TPageParam>
+  initialPageParam: TPageParam
+  getNextPageParam: GetNextPageParamFunction<TPageParam, TData>
+  getPreviousPageParam?: GetPreviousPageParamFunction<TPageParam, TData>
+  maxPages?: number
+} & Omit<QueryNodeOptions, 'queryFn'>
 
 /** Scope node: optional queryFn, has sub-queries */
 export type ScopeDefinition<
-  TData = unknown,
   TChildren extends Record<string, NodeDefinition> = Record<string, NodeDefinition>,
 > = {
-  queryFn?: QueryFunction<TData>
   subQueries: TChildren
 } & QueryNodeOptions
 
@@ -58,13 +46,14 @@ export type ScopeDefinition<
 export type DynamicDefinition<
   TParam = unknown,
   TKey extends readonly [unknown, ...unknown[]] = readonly [unknown, ...unknown[]],
-  TData = unknown,
   TChildren extends Record<string, NodeDefinition> = Record<string, NodeDefinition>,
 > = (param: TParam) => {
   queryKey: TKey
-  queryFn?: QueryFunction<TData>
   subQueries?: TChildren
-} & QueryNodeOptions
+} & Omit<QueryNodeOptions, 'queryFn'> & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    queryFn?: QueryFunction<any, any, any> | SkipToken
+  }
 
 /** Recursive children record (interface to allow self-referencing NodeDefinition) */
 interface NodeDefinitionRecord {
@@ -73,9 +62,13 @@ interface NodeDefinitionRecord {
 
 /** Discriminated union of all node definition shapes */
 export type NodeDefinition =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | LeafDefinition<any>
-  | ScopeDefinition<any, any>
-  | DynamicDefinition<any, readonly [unknown, ...unknown[]], any, NodeDefinitionRecord>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | InfiniteLeafDefinition<any, any>
+  | ScopeDefinition<NodeDefinitionRecord>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | DynamicDefinition<any, readonly [unknown, ...unknown[]], NodeDefinitionRecord>
 
 // ---------------------------------------------------------------------------
 // Sub-query namespace: $sub groups child queries for discoverability
@@ -88,18 +81,6 @@ export type SubQueryNamespace<T> = keyof T extends never ? {} : { $sub: T }
 // ---------------------------------------------------------------------------
 // Output: Resolved Query Nodes (what createQueryOptions produces)
 // ---------------------------------------------------------------------------
-
-/** A static (non-parameterised) query node in the output tree */
-export type StaticQueryNode<
-  TKey extends readonly unknown[],
-  TData,
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  TChildren extends Record<string, unknown> = {},
-> = {
-  queryKey: DataTag<TKey, TData, DefaultError>
-  queryFn?: QueryFunction<TData, TKey & QueryKey>
-} & QueryNodeOptions &
-  TChildren
 
 /**
  * A dynamic (parameterised) query node in the output tree.
@@ -121,16 +102,50 @@ type ExtractSubQueries<T> = T extends { subQueries: infer C extends Record<strin
   : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     {}
 
-/** Extract data type from a node definition or dynamic node's return value */
-type ExtractData<T> = T extends { queryFn: QueryFunction<infer D> }
-  ? D
-  : T extends { queryFn?: QueryFunction<infer D> }
+/** Extract the raw queryFn type from a node definition */
+type ExtractQueryFn<T> = T extends { queryFn: infer F }
+  ? F
+  : T extends { queryFn?: infer F }
+    ? F
+    : never
+
+/** Extract data type from a node definition, handling SkipToken unions and infinite query pageParam */
+type ExtractData<T> =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Exclude<ExtractQueryFn<T>, SkipToken | undefined> extends QueryFunction<infer D, any, any>
     ? D
     : unknown
 
+/** Check if a definition is an infinite query (has initialPageParam) */
+type IsInfiniteDefinition<T> = T extends { initialPageParam: unknown } ? true : false
+
+/** Extract the page param type from an infinite query definition */
+type ExtractPageParam<T> = T extends { initialPageParam: infer P } ? P : never
+
+/** Resolve a static node to either UseInfiniteQueryOptions or UseQueryOptions */
+type ResolveStaticNode<TDef, TKey extends readonly unknown[]> =
+  IsInfiniteDefinition<TDef> extends true
+    ? UseInfiniteQueryOptions<
+        ExtractData<TDef>,
+        DefaultError,
+        InfiniteData<ExtractData<TDef>, ExtractPageParam<TDef>>,
+        TKey & QueryKey,
+        ExtractPageParam<TDef>
+      > & {
+        queryKey: DataTag<
+          TKey,
+          InfiniteData<ExtractData<TDef>, ExtractPageParam<TDef>>,
+          DefaultError
+        >
+      } & SubQueryNamespace<BuildTree<TKey, ExtractSubQueries<TDef>>>
+    : UseQueryOptions<ExtractData<TDef>, DefaultError, ExtractData<TDef>, TKey & QueryKey> & {
+        queryKey: DataTag<TKey, ExtractData<TDef>, DefaultError>
+      } & SubQueryNamespace<BuildTree<TKey, ExtractSubQueries<TDef>>>
+
 /**
  * Recursively build the output tree from a definition record.
- * Each key in the definition becomes either a StaticQueryNode or DynamicQueryNode.
+ * Each key in the definition becomes either a UseQueryOptions node,
+ * UseInfiniteQueryOptions node, or DynamicQueryNode.
  */
 export type BuildTree<
   TParentKey extends readonly unknown[],
@@ -141,20 +156,10 @@ export type BuildTree<
       ? DynamicQueryNode<
           readonly [...TParentKey, K],
           P,
-          StaticQueryNode<
-            readonly [...TParentKey, K, ...QK],
-            ExtractData<R>,
-            SubQueryNamespace<BuildTree<readonly [...TParentKey, K, ...QK], ExtractSubQueries<R>>>
-          >
+          ResolveStaticNode<R, readonly [...TParentKey, K, ...QK]>
         >
       : never
-    : TDef[K] extends { subQueries: infer C extends Record<string, unknown> }
-      ? StaticQueryNode<
-          readonly [...TParentKey, K],
-          ExtractData<TDef[K]>,
-          SubQueryNamespace<BuildTree<readonly [...TParentKey, K], C>>
-        >
-      : StaticQueryNode<readonly [...TParentKey, K], ExtractData<TDef[K]>>
+    : ResolveStaticNode<TDef[K], readonly [...TParentKey, K]>
 }
 
 // ---------------------------------------------------------------------------

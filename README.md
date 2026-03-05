@@ -1,35 +1,53 @@
-# structured-queries
+<h1 align="center">structured-queries</h1>
 
-Type-safe, hierarchical query options factories for [TanStack Query](https://tanstack.com/query) — define and organise your queries as a structured, composable tree.
+<p align="center">
+  Type-safe, hierarchical query options factories for <a href="https://tanstack.com/query">TanStack Query</a>
+</p>
 
-Inspired by [query-key-factory](https://github.com/lukemorales/query-key-factory) by Luke Morales. `structured-queries` takes the idea further with hierarchical sub-queries, parameterised nodes, and a single tree that is directly compatible with `useQuery`, `fetchQuery`, and friends — no wrappers needed.
+<p align="center">
+  <a href="https://www.npmjs.com/package/structured-queries"><img src="https://img.shields.io/npm/v/structured-queries" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/structured-queries"><img src="https://img.shields.io/npm/dm/structured-queries" alt="npm downloads"></a>
+  <a href="https://bundlephobia.com/package/structured-queries"><img src="https://img.shields.io/bundlephobia/minzip/structured-queries" alt="bundle size"></a>
+  <a href="https://github.com/MatthiasWissink/structured-queries/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/structured-queries" alt="license"></a>
+</p>
+
+<p align="center">
+  Define and organise your queries as a structured, composable tree. Each node is directly compatible with <code>useQuery</code>, <code>useInfiniteQuery</code>, <code>fetchQuery</code>, and friends — no wrappers needed.
+</p>
+
+---
+
+## Why?
+
+Inspired by [query-key-factory](https://github.com/lukemorales/query-key-factory) by Luke Morales. `structured-queries` takes the idea further with hierarchical sub-queries, parameterised nodes, infinite query support, and a single tree that produces ready-to-use query options.
 
 ## Features
 
-- Hierarchical query keys built automatically from the tree structure
-- Parameterised (dynamic) nodes with closure-based `queryFn`
-- Sub-queries via `$sub` namespace for deep nesting
-- Partial keys on uncalled dynamic nodes for easy invalidation
-- `mergeQueryOptions` to combine multiple domain trees into one namespace
-- `inferQueryKeys` type helper to extract the union of all possible key tuples
-- Full `QueryOptions` passthrough (`staleTime`, `gcTime`, `retry`, etc.)
-- Zero runtime dependencies — only `@tanstack/query-core >=5` as a peer dep
-- ESM + CJS dual output
+- **Hierarchical query keys** — built automatically from the tree structure
+- **Parameterised nodes** — closure-based `queryFn` with type-safe parameters
+- **Deep nesting** — arbitrarily nested sub-queries via `$sub`
+- **Infinite queries** — first-class `useInfiniteQuery` / `fetchInfiniteQuery` support
+- **Partial keys** — uncalled dynamic nodes expose `.queryKey` for invalidation
+- **Type-safe cache** — `DataTag`-branded keys for typed `getQueryData`
+- **`mergeQueryOptions`** — combine domain trees into a single namespace
+- **`inferQueryKeys`** — extract the union of all possible key tuples
+- **Options passthrough** — `staleTime`, `gcTime`, `retry`, and all other TanStack Query options
+- **Zero runtime dependencies** — only `@tanstack/query-core >=5` as a peer dep
+- **ESM + CJS** — dual output, tree-shakeable
 
 ## Install
 
 ```sh
-npm install structured-queries @tanstack/react-query
+npm install structured-queries
 ```
 
-> `@tanstack/query-core >=5.0.0` is a peer dependency, satisfied by any TanStack Query v5 package (`@tanstack/react-query`, `@tanstack/vue-query`, etc.).
+> **Peer dependency:** `@tanstack/query-core >=5.0.0`, satisfied by any TanStack Query v5 package (`@tanstack/react-query`, `@tanstack/vue-query`, etc.).
 
 ## Quick Start
 
-### Define a query tree
-
 ```ts
 import { createQueryOptions } from 'structured-queries'
+import { useQuery } from '@tanstack/react-query'
 
 const todos = createQueryOptions('todos', {
   all: {
@@ -40,12 +58,6 @@ const todos = createQueryOptions('todos', {
     queryFn: () => fetch(`/api/todos/${id}`).then((r) => r.json()),
   }),
 })
-```
-
-### Use with TanStack Query
-
-```tsx
-import { useQuery } from '@tanstack/react-query'
 
 // Fetch all todos
 const { data } = useQuery(todos.all)
@@ -55,14 +67,12 @@ const { data } = useQuery(todos.byId('abc'))
 
 // Invalidate everything under "todos"
 queryClient.invalidateQueries({ queryKey: todos.queryKey })
-// → matches ["todos", "all"], ["todos", "byId", "abc"], etc.
 
 // Invalidate all "byId" queries regardless of param
 queryClient.invalidateQueries({ queryKey: todos.byId.queryKey })
-// → matches ["todos", "byId", *]
 ```
 
-## API
+## API Reference
 
 ### `createQueryOptions(scope, definition)`
 
@@ -98,7 +108,7 @@ const tags = createQueryOptions('tags', {
 })
 ```
 
-The returned object exposes:
+**Resolved query keys:**
 
 | Access                      | `queryKey`                                     |
 | --------------------------- | ---------------------------------------------- |
@@ -114,7 +124,7 @@ Every node with a `queryFn` is directly spreadable into `useQuery`, `fetchQuery`
 
 ### `mergeQueryOptions(...queries)`
 
-Merges multiple query trees into a single namespace object. Duplicate scope names produce a compile-time error.
+Merges multiple query trees into a single namespace object. Duplicate scope names produce a **compile-time error**.
 
 ```ts
 import { createQueryOptions, mergeQueryOptions } from 'structured-queries'
@@ -153,11 +163,12 @@ type TagKeys = inferQueryKeys<typeof tags>
 // | readonly ["tags", "filters", "active"]
 ```
 
-## Node Types
+## Guide
 
-### Static Leaf
+### Node Types
 
-A node with a `queryFn` and no children.
+<details>
+<summary><strong>Static Leaf</strong> — a node with a <code>queryFn</code> and no children</summary>
 
 ```ts
 {
@@ -167,9 +178,10 @@ A node with a `queryFn` and no children.
 }
 ```
 
-### Dynamic (Parameterised) Node
+</details>
 
-A function that receives a parameter and returns a node definition with a `queryKey` segment.
+<details>
+<summary><strong>Dynamic (Parameterised) Node</strong> — a function returning a node definition with a <code>queryKey</code> segment</summary>
 
 ```ts
 ;(id: string) => ({
@@ -187,9 +199,10 @@ Multi-segment keys are supported:
 })
 ```
 
-### Scope Node
+</details>
 
-Groups children under a namespace. Optionally has its own `queryFn`.
+<details>
+<summary><strong>Scope Node</strong> — groups children under a namespace, optionally has its own <code>queryFn</code></summary>
 
 ```ts
 {
@@ -202,7 +215,100 @@ Groups children under a namespace. Optionally has its own `queryFn`.
 }
 ```
 
-## Query Options Passthrough
+</details>
+
+<details>
+<summary><strong>Infinite Query Node</strong> — paginated queries with <code>initialPageParam</code> and <code>getNextPageParam</code></summary>
+
+Works on both static and dynamic nodes. Directly compatible with `useInfiniteQuery` / `fetchInfiniteQuery`.
+
+```ts
+const pages = createQueryOptions('pages', {
+  // Static infinite query
+  list: {
+    queryFn: ({ pageParam }) => fetch(`/api/pages?cursor=${pageParam}`).then((r) => r.json()),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  },
+
+  // Dynamic infinite query
+  search: (term: string) => ({
+    queryKey: [term],
+    queryFn: ({ pageParam }) =>
+      fetch(`/api/search?q=${term}&cursor=${pageParam}`).then((r) => r.json()),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  }),
+})
+
+const { data } = useInfiniteQuery(pages.list)
+const { data } = useInfiniteQuery(pages.search('hello'))
+```
+
+`getPreviousPageParam` and `maxPages` are also supported.
+
+</details>
+
+### Deep Nesting
+
+Sub-queries can be nested to arbitrary depth — including parameterised nodes inside other parameterised nodes:
+
+```ts
+const org = createQueryOptions('org', {
+  byId: (orgId: string) => ({
+    queryKey: [orgId],
+    queryFn: () => api.getOrg(orgId),
+    subQueries: {
+      members: {
+        queryFn: () => api.getMembers(orgId),
+        subQueries: {
+          active: { queryFn: () => api.getActiveMembers(orgId) },
+        },
+      },
+      project: (projectId: number) => ({
+        queryKey: [projectId],
+        queryFn: () => api.getProject(orgId, projectId),
+        subQueries: {
+          tasks: { queryFn: () => api.getTasks(orgId, projectId) },
+          issue: (issueId: string) => ({
+            queryKey: [issueId],
+            queryFn: () => api.getIssue(orgId, projectId, issueId),
+            subQueries: {
+              comments: { queryFn: () => api.getComments(orgId, projectId, issueId) },
+            },
+          }),
+        },
+      }),
+    },
+  }),
+})
+
+// Chain through $sub at every level
+const data = await queryClient.fetchQuery(
+  org.byId('acme').$sub.project(42).$sub.issue('ISS-1').$sub.comments,
+)
+// queryKey → ["org", "byId", "acme", "project", 42, "issue", "ISS-1", "comments"]
+
+// Invalidate at any level — cascades to all children
+queryClient.invalidateQueries({
+  queryKey: org.byId('acme').$sub.project(42).queryKey,
+})
+```
+
+### Type-Safe Cache Access
+
+Query keys are branded with `DataTag`, so `getQueryData` returns the correct type without a manual generic:
+
+```ts
+await queryClient.fetchQuery(tags.all)
+
+// data is inferred as string[] (from the queryFn return type)
+const data = queryClient.getQueryData(tags.all.queryKey)
+```
+
+For infinite queries the data type is automatically `InfiniteData<TData, TPageParam>`.
+
+### Query Options Passthrough
 
 All standard TanStack Query options are supported on any node:
 
@@ -220,6 +326,30 @@ All standard TanStack Query options are supported on any node:
 }
 ```
 
+## TypeScript
+
+### Exported Types
+
+| Type                     | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| `QueryNodeOptions`       | Query options attachable to any node (everything except `queryKey`) |
+| `LeafDefinition`         | Static leaf node definition (requires `queryFn`)                    |
+| `InfiniteLeafDefinition` | Infinite query leaf definition (`queryFn` + pagination params)      |
+| `ScopeDefinition`        | Scope node definition (has `subQueries`, optional `queryFn`)        |
+| `DynamicDefinition`      | Dynamic node definition (function returning a node)                 |
+| `NodeDefinition`         | Union of all node definition shapes                                 |
+| `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)   |
+| `StructuredQuery`        | Root output type of `createQueryOptions`                            |
+| `MergedQuery`            | Output type of `mergeQueryOptions`                                  |
+| `BuildTree`              | Recursive mapped type that builds the output tree                   |
+| `EnsureUniqueScopes`     | Compile-time constraint rejecting duplicate scope names             |
+| `inferQueryKeys`         | Extracts the union of all query key tuples from a tree              |
+
+### Requirements
+
+- TypeScript 5.4+
+- `strict: true` recommended
+
 ## License
 
-MIT
+[MIT](LICENSE)

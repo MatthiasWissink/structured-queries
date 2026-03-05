@@ -1,4 +1,6 @@
 import { describe, it, expectTypeOf } from 'vitest'
+import { skipToken } from '@tanstack/react-query'
+import type { InfiniteData, dataTagSymbol } from '@tanstack/query-core'
 import { createQueryOptions } from '../../src/index'
 import type { inferQueryKeys } from '../../src/index'
 
@@ -23,74 +25,59 @@ describe('type-level tests for createQueryOptions', () => {
     }),
   })
 
-  // QueryKey type checks use typed variable assignments.
-  // DataTag brands the tuple with phantom symbols, so we verify
-  // assignability to the base tuple type (if it compiles, it passes).
-
-  // Root scope key is readonly tuple
-  it('root queryKey is readonly ["tags"]', () => {
+  it('root queryKey', () => {
     const _key: readonly ['tags'] = tags.queryKey
   })
 
-  // Static leaf key tuple inference
-  it('static leaf queryKey is readonly ["tags", "all"]', () => {
+  it('static leaf queryKey', () => {
     const _key: readonly ['tags', 'all'] = tags.all.queryKey
   })
 
-  // Parameterised node uncalled key
-  it('parameterised node uncalled queryKey is readonly ["tags", "byId"]', () => {
+  it('uncalled parameterised queryKey', () => {
     const _key: readonly ['tags', 'byId'] = tags.byId.queryKey
   })
 
-  // Parameterised node called key
-  it('parameterised node called queryKey includes param', () => {
+  it('called parameterised queryKey', () => {
     const _key: readonly ['tags', 'byId', string] = tags.byId('123').queryKey
   })
 
-  // Nested child key under parameterised node
   it('nested child key includes all ancestors', () => {
     const _key: readonly ['tags', 'byId', string, 'moreInfo'] =
       tags.byId('123').$sub.moreInfo.queryKey
   })
 
-  // Nested parameterised child key
-  it('nested parameterised child key includes all ancestors and both params', () => {
+  it('nested parameterised child key', () => {
     const _key: readonly ['tags', 'byId', string, 'version', number] = tags
       .byId('123')
       .$sub.version(2).queryKey
   })
 
-  // Parameterised node is callable
-  it('parameterised node is callable with correct param type', () => {
+  it('parameterised node is callable', () => {
     expectTypeOf(tags.byId).toBeCallableWith('some-id')
   })
 
-  // EC1: Wrong param type should error
   it('rejects wrong parameter type', () => {
     // @ts-expect-error - number is not assignable to string
     tags.byId(123)
   })
 
-  // EC2: Non-existent child should error
-  it('rejects access to non-existent child property', () => {
+  it('rejects non-existent child', () => {
     // @ts-expect-error - 'nonExistent' does not exist
     const _unused: unknown = tags.all.nonExistent
   })
 
-  // EC3: Non-existent child on parameterised result
-  it('rejects access to non-existent child on parameterised node result', () => {
+  it('rejects non-existent child on parameterised result', () => {
     // @ts-expect-error - 'nonExistent' does not exist
     const _unused: unknown = tags.byId('123').nonExistent
   })
 
-  // Data types flow through queryFn
-  it('static leaf data type is inferred from queryFn', () => {
+  it('static leaf data type inferred from queryFn', () => {
     const qf = tags.all.queryFn
     expectTypeOf(qf).not.toBeUndefined()
     if (qf) expectTypeOf(qf).returns.resolves.toEqualTypeOf<string[]>()
   })
 
-  it('parameterised node data type is inferred from queryFn', () => {
+  it('parameterised node data type inferred from queryFn', () => {
     const qf = tags.byId('123').queryFn
     expectTypeOf(qf).not.toBeUndefined()
     if (qf)
@@ -100,8 +87,7 @@ describe('type-level tests for createQueryOptions', () => {
       }>()
   })
 
-  // Multi-segment dynamic key type inference
-  it('multi-segment dynamic key types are inferred correctly', () => {
+  it('multi-segment dynamic key types', () => {
     const repos = createQueryOptions('repos', {
       byOwnerAndName: (p: { owner: string; name: string }) => ({
         queryKey: [p.owner, p.name],
@@ -116,11 +102,8 @@ describe('type-level tests for createQueryOptions', () => {
     }).queryKey
   })
 
-  // inferQueryKeys extracts all key tuples
-  it('inferQueryKeys extracts all key tuples from a StructuredQuery', () => {
+  it('inferQueryKeys extracts all key tuples', () => {
     type Keys = inferQueryKeys<typeof tags>
-    // Verify each expected key tuple is assignable to the Keys union.
-    // StripDataTag removes the DataTag branding, so these are plain tuples.
     const _root: Keys = ['tags'] as const
     const _all: Keys = ['tags', 'all'] as const
     const _byId: Keys = ['tags', 'byId'] as const
@@ -128,5 +111,84 @@ describe('type-level tests for createQueryOptions', () => {
     const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo'] as const
     const _version: Keys = ['tags', 'byId', '123', 'version'] as const
     const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2] as const
+  })
+})
+
+describe('skipToken type inference', () => {
+  it('infers data type when queryFn is conditionally skipToken (dynamic node)', () => {
+    const queries = createQueryOptions('items', {
+      detail: (id: string | undefined) => ({
+        queryKey: [id ?? 'none'],
+        queryFn: id ? () => Promise.resolve({ id, name: 'test' }) : skipToken,
+      }),
+    })
+
+    const resolved = queries.detail('abc')
+    const qf = resolved.queryFn
+    expectTypeOf(qf).not.toBeUndefined()
+    if (qf && qf !== skipToken) {
+      expectTypeOf(qf).returns.resolves.toEqualTypeOf<{ id: string; name: string }>()
+    }
+  })
+
+  it('infers data type when queryFn is conditionally skipToken (static node)', () => {
+    const enabled = true as boolean
+    const queries = createQueryOptions('items', {
+      all: {
+        queryFn: enabled ? () => Promise.resolve(['a', 'b']) : skipToken,
+      },
+    })
+
+    const qf = queries.all.queryFn
+    if (qf && qf !== skipToken) {
+      expectTypeOf(qf).returns.resolves.toEqualTypeOf<string[]>()
+    }
+  })
+})
+
+describe('infinite query type inference', () => {
+  type Page = { items: string[]; nextCursor: number }
+
+  const pages = createQueryOptions('pages', {
+    list: {
+      queryFn: ({ pageParam }: { pageParam: number }) =>
+        Promise.resolve({ items: [`item-${String(pageParam)}`], nextCursor: pageParam + 1 }),
+      initialPageParam: 0,
+      getNextPageParam: (lastPage: Page) => lastPage.nextCursor,
+    },
+  })
+
+  it('infinite query queryKey', () => {
+    const _key: readonly ['pages', 'list'] = pages.list.queryKey
+  })
+
+  it('infinite query has initialPageParam', () => {
+    expectTypeOf(pages.list.initialPageParam).toEqualTypeOf<number>()
+  })
+
+  it('infinite query has getNextPageParam', () => {
+    expectTypeOf(pages.list.getNextPageParam).toBeFunction()
+  })
+
+  it('dynamic infinite query node', () => {
+    const queries = createQueryOptions('search', {
+      results: (term: string) => ({
+        queryKey: [term],
+        queryFn: ({ pageParam }: { pageParam: number }) =>
+          Promise.resolve({ results: [term], next: pageParam + 1 }),
+        initialPageParam: 0,
+        getNextPageParam: (lastPage: { results: string[]; next: number }) => lastPage.next,
+      }),
+    })
+
+    const _uncalled: readonly ['search', 'results'] = queries.results.queryKey
+    const _called: readonly ['search', 'results', string] = queries.results('hello').queryKey
+    expectTypeOf(queries.results('hello').initialPageParam).toEqualTypeOf<number>()
+  })
+
+  it('infinite query data type is InfiniteData', () => {
+    // The queryKey DataTag should brand data as InfiniteData
+    type TaggedData = (typeof pages.list.queryKey)[dataTagSymbol]
+    expectTypeOf<TaggedData>().toEqualTypeOf<InfiniteData<Page, number>>()
   })
 })

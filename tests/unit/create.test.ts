@@ -2,50 +2,48 @@ import { describe, it, expect } from 'vitest'
 import { createQueryOptions } from '../../src/index'
 
 describe('createQueryOptions', () => {
-  // US1 Scenario 1: Static leaf queryKey
-  it('produces correct queryKey for a static leaf node', () => {
-    const tags = createQueryOptions('tags', {
-      all: {
-        queryFn: () => Promise.resolve(['tag1', 'tag2']),
+  const fetchFn = () => Promise.resolve(['tag1', 'tag2'])
+  const tags = createQueryOptions('tags', {
+    all: {
+      queryFn: fetchFn,
+      subQueries: {
+        active: {
+          queryFn: () => Promise.resolve([]),
+        },
       },
-    })
+    },
+    byId: (id: string) => ({
+      queryKey: [id],
+      queryFn: () => Promise.resolve({ id, name: 'test' }),
+      subQueries: {
+        moreInfo: {
+          queryFn: () => Promise.resolve({ details: true }),
+        },
+        version: (v: number) => ({
+          queryKey: [v],
+          queryFn: () => Promise.resolve({ id, version: v }),
+        }),
+      },
+    }),
+  })
 
+  it('static leaf queryKey', () => {
     expect(tags.queryKey).toEqual(['tags'])
     expect(tags.all.queryKey).toEqual(['tags', 'all'])
   })
 
-  // US1 Scenario 2: Static leaf queryFn passthrough
-  it('passes through queryFn for static leaf nodes', () => {
-    const fetchFn = () => Promise.resolve(['tag1'])
-    const tags = createQueryOptions('tags', {
-      all: {
-        queryFn: fetchFn,
-      },
-    })
-
+  it('static leaf queryFn passthrough', () => {
     expect(tags.all.queryFn).toBe(fetchFn)
   })
 
-  // US1 Scenario 3: Parameterised node queryKey
-  it('produces correct queryKey for parameterised nodes', () => {
-    const tags = createQueryOptions('tags', {
-      byId: (id: string) => ({
-        queryKey: [id],
-        queryFn: () => Promise.resolve({ id, name: 'test' }),
-      }),
-    })
-
-    // Uncalled: partial key for invalidation
+  it('parameterised node queryKey', () => {
     expect(tags.byId.queryKey).toEqual(['tags', 'byId'])
-
-    // Called: full key with parameter
     expect(tags.byId('123').queryKey).toEqual(['tags', 'byId', '123'])
   })
 
-  // US1 Scenario 4: Parameterised node queryFn uses closure
-  it('passes through queryFn from parameterised nodes', () => {
+  it('parameterised node queryFn closure', () => {
     let capturedId = ''
-    const tags = createQueryOptions('tags', {
+    const closureTags = createQueryOptions('tags', {
       byId: (id: string) => ({
         queryKey: [id],
         queryFn: () => {
@@ -55,9 +53,8 @@ describe('createQueryOptions', () => {
       }),
     })
 
-    const node = tags.byId('abc')
+    const node = closureTags.byId('abc')
     expect(node.queryFn).toBeDefined()
-    // Call queryFn to verify closure works
     if (node.queryFn) {
       // @ts-expect-error - simplified mock context for testing
       void node.queryFn({
@@ -69,77 +66,23 @@ describe('createQueryOptions', () => {
     expect(capturedId).toBe('abc')
   })
 
-  // US1 Scenario 5: Nested child queryKey
-  it('produces correct queryKey for nested children', () => {
-    const tags = createQueryOptions('tags', {
-      byId: (id: string) => ({
-        queryKey: [id],
-        queryFn: () => Promise.resolve({ id }),
-        subQueries: {
-          moreInfo: {
-            queryFn: () => Promise.resolve({ details: true }),
-          },
-        },
-      }),
-    })
-
+  it('nested child queryKey', () => {
     expect(tags.byId('123').$sub.moreInfo.queryKey).toEqual(['tags', 'byId', '123', 'moreInfo'])
   })
 
-  // Scope node with children
-  it('handles scope nodes with optional queryFn and children', () => {
-    const tags = createQueryOptions('tags', {
-      all: {
-        queryFn: () => Promise.resolve([]),
-        subQueries: {
-          active: {
-            queryFn: () => Promise.resolve([]),
-          },
-        },
-      },
-    })
-
+  it('scope node with children', () => {
     expect(tags.all.queryKey).toEqual(['tags', 'all'])
     expect(tags.all.$sub.active.queryKey).toEqual(['tags', 'all', 'active'])
     expect(tags.all.queryFn).toBeDefined()
     expect(tags.all.$sub.active.queryFn).toBeDefined()
   })
 
-  // Extra query options passthrough
-  it('passes through extra query options like staleTime', () => {
-    const tags = createQueryOptions('tags', {
-      all: {
-        queryFn: () => Promise.resolve([]),
-        staleTime: 60_000,
-        gcTime: 300_000,
-      },
-    })
-
-    expect(tags.all.staleTime).toBe(60_000)
-    expect(tags.all.gcTime).toBe(300_000)
-  })
-
-  // Deeply nested parameterised nodes
-  it('handles nested parameterised nodes (param inside param)', () => {
-    const tags = createQueryOptions('tags', {
-      byId: (id: string) => ({
-        queryKey: [id],
-        queryFn: () => Promise.resolve({ id }),
-        subQueries: {
-          version: (v: number) => ({
-            queryKey: [v],
-            queryFn: () => Promise.resolve({ id, version: v }),
-          }),
-        },
-      }),
-    })
-
+  it('nested parameterised nodes', () => {
     expect(tags.byId('123').$sub.version(2).queryKey).toEqual(['tags', 'byId', '123', 'version', 2])
   })
 
-  // Scope without queryFn (pure grouping)
-  it('handles scope nodes without queryFn', () => {
-    const tags = createQueryOptions('tags', {
+  it('scope node without queryFn', () => {
+    const grouped = createQueryOptions('tags', {
       filters: {
         subQueries: {
           active: {
@@ -149,20 +92,18 @@ describe('createQueryOptions', () => {
       },
     })
 
-    expect(tags.filters.queryKey).toEqual(['tags', 'filters'])
-    expect(tags.filters.$sub.active.queryKey).toEqual(['tags', 'filters', 'active'])
-    expect(tags.filters.queryFn).toBeUndefined()
+    expect(grouped.filters.queryKey).toEqual(['tags', 'filters'])
+    expect(grouped.filters.$sub.active.queryKey).toEqual(['tags', 'filters', 'active'])
+    expect(grouped.filters.queryFn).toBeUndefined()
   })
 
-  // Empty definition
-  it('handles empty definition object', () => {
+  it('empty definition', () => {
     const empty = createQueryOptions('empty', {})
     expect(empty.queryKey).toEqual(['empty'])
     expect(empty._scope).toBe('empty')
   })
 
-  // Multi-segment dynamic keys
-  it('produces correct queryKey for multi-segment dynamic keys', () => {
+  it('multi-segment dynamic keys', () => {
     const repos = createQueryOptions('repos', {
       byOwnerAndName: (p: { owner: string; name: string }) => ({
         queryKey: [p.owner, p.name],
@@ -179,11 +120,12 @@ describe('createQueryOptions', () => {
     ])
   })
 
-  // Broader query options passthrough
-  it('passes through additional query options like retry, networkMode, meta', () => {
-    const tags = createQueryOptions('tags', {
+  it('extra query options passthrough', () => {
+    const opts = createQueryOptions('tags', {
       all: {
         queryFn: () => Promise.resolve([]),
+        staleTime: 60_000,
+        gcTime: 300_000,
         retry: 3,
         retryDelay: 1000,
         networkMode: 'offlineFirst',
@@ -191,9 +133,44 @@ describe('createQueryOptions', () => {
       },
     })
 
-    expect(tags.all.retry).toBe(3)
-    expect(tags.all.retryDelay).toBe(1000)
-    expect(tags.all.networkMode).toBe('offlineFirst')
-    expect(tags.all.meta).toEqual({ source: 'api' })
+    expect(opts.all.staleTime).toBe(60_000)
+    expect(opts.all.gcTime).toBe(300_000)
+    expect(opts.all.retry).toBe(3)
+    expect(opts.all.retryDelay).toBe(1000)
+    expect(opts.all.networkMode).toBe('offlineFirst')
+    expect(opts.all.meta).toEqual({ source: 'api' })
+  })
+
+  it('static infinite query node', () => {
+    const pages = createQueryOptions('pages', {
+      list: {
+        queryFn: ({ pageParam }: { pageParam: number }) =>
+          Promise.resolve({ items: ['a'], next: pageParam + 1 }),
+        initialPageParam: 0,
+        getNextPageParam: (lastPage: { items: string[]; next: number }) => lastPage.next,
+      },
+    })
+
+    expect(pages.list.queryKey).toEqual(['pages', 'list'])
+    expect(pages.list.initialPageParam).toBe(0)
+    expect(pages.list.getNextPageParam).toBeDefined()
+    expect(pages.list.queryFn).toBeDefined()
+  })
+
+  it('dynamic infinite query node', () => {
+    const search = createQueryOptions('search', {
+      results: (term: string) => ({
+        queryKey: [term],
+        queryFn: ({ pageParam }: { pageParam: number }) =>
+          Promise.resolve({ results: [term], next: pageParam + 1 }),
+        initialPageParam: 0,
+        getNextPageParam: (lastPage: { results: string[]; next: number }) => lastPage.next,
+      }),
+    })
+
+    expect(search.results.queryKey).toEqual(['search', 'results'])
+    expect(search.results('hello').queryKey).toEqual(['search', 'results', 'hello'])
+    expect(search.results('hello').initialPageParam).toBe(0)
+    expect(search.results('hello').getNextPageParam).toBeDefined()
   })
 })
