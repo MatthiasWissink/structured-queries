@@ -55,14 +55,12 @@ describe('createQueryOptions', () => {
 
     const node = closureTags.byId('abc')
     expect(node.queryFn).toBeDefined()
-    if (node.queryFn) {
-      // @ts-expect-error - simplified mock context for testing
-      void node.queryFn({
-        queryKey: ['tags', 'byId', 'abc'],
-        signal: new AbortController().signal,
-        meta: undefined,
-      })
-    }
+    // @ts-expect-error - simplified mock context for testing
+    void node.queryFn({
+      queryKey: ['tags', 'byId', 'abc'],
+      signal: new AbortController().signal,
+      meta: undefined,
+    })
     expect(capturedId).toBe('abc')
   })
 
@@ -155,6 +153,80 @@ describe('createQueryOptions', () => {
     expect(pages.list.initialPageParam).toBe(0)
     expect(pages.list.getNextPageParam).toBeDefined()
     expect(pages.list.queryFn).toBeDefined()
+  })
+
+  it('multi-parameter dynamic node queryKey and queryFn', () => {
+    type Filter = { status: string; priority: number }
+    const tasks = createQueryOptions('tasks', {
+      search: (userId: string, page: number, filter: Filter) => ({
+        queryKey: [userId, page],
+        queryFn: () => Promise.resolve({ userId, page, filter }),
+      }),
+    })
+
+    expect(tasks.search.queryKey).toEqual(['tasks', 'search'])
+    expect(tasks.search('u1', 3, { status: 'open', priority: 1 }).queryKey).toEqual([
+      'tasks',
+      'search',
+      'u1',
+      3,
+    ])
+    expect(tasks.search('u1', 3, { status: 'open', priority: 1 }).queryFn).toBeDefined()
+  })
+
+  it('multi-parameter dynamic node with sub-queries', () => {
+    const reports = createQueryOptions('reports', {
+      byRange: (start: Date, end: Date, format: string) => ({
+        queryKey: [start.toISOString(), end.toISOString(), format],
+        queryFn: () => Promise.resolve({ start, end, format }),
+        subQueries: {
+          summary: {
+            queryFn: () => Promise.resolve({ total: 42 }),
+          },
+        },
+      }),
+    })
+
+    const start = new Date('2025-01-01')
+    const end = new Date('2025-12-31')
+    expect(reports.byRange(start, end, 'csv').queryKey).toEqual([
+      'reports',
+      'byRange',
+      start.toISOString(),
+      end.toISOString(),
+      'csv',
+    ])
+    expect(reports.byRange(start, end, 'csv').$sub.summary.queryKey).toEqual([
+      'reports',
+      'byRange',
+      start.toISOString(),
+      end.toISOString(),
+      'csv',
+      'summary',
+    ])
+  })
+
+  it('multi-parameter dynamic node closure captures all args', () => {
+    type Opts = { verbose: boolean }
+    let captured: { a: number; b: string; c: Opts } | undefined
+    const q = createQueryOptions('test', {
+      run: (a: number, b: string, c: Opts) => ({
+        queryKey: [a, b],
+        queryFn: () => {
+          captured = { a, b, c }
+          return Promise.resolve(captured)
+        },
+      }),
+    })
+
+    const node = q.run(7, 'hello', { verbose: true })
+    // @ts-expect-error - simplified mock context for testing
+    void node.queryFn({
+      queryKey: ['test', 'run', 7, 'hello'],
+      signal: new AbortController().signal,
+      meta: undefined,
+    })
+    expect(captured).toEqual({ a: 7, b: 'hello', c: { verbose: true } })
   })
 
   it('dynamic infinite query node', () => {

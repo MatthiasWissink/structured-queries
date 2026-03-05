@@ -44,8 +44,10 @@ function buildNode(
 
   // Dynamic (parameterised) node: definition is a function
   if (typeof definition === 'function') {
-    const caller = (param: unknown) => {
-      const result = (definition as unknown as (param: unknown) => Record<string, unknown>)(param)
+    const caller = (...args: unknown[]) => {
+      const result = (definition as unknown as (...args: unknown[]) => Record<string, unknown>)(
+        ...args,
+      )
       const { queryKey: paramSegments, subQueries, queryFn, ...rest } = result
       const fullKey = [...nodeKey, ...(paramSegments as unknown[])] as readonly unknown[]
 
