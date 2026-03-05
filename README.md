@@ -100,15 +100,15 @@ const tags = createQueryOptions('tags', {
 
 The returned object exposes:
 
-| Access                          | `queryKey`                              |
-| ------------------------------- | --------------------------------------- |
-| `tags`                          | `["tags"]`                              |
-| `tags.all`                      | `["tags", "all"]`                       |
-| `tags.byId`                     | `["tags", "byId"]` (partial, for invalidation) |
-| `tags.byId("1")`               | `["tags", "byId", "1"]`                |
-| `tags.byId("1").$sub.posts`    | `["tags", "byId", "1", "posts"]`       |
-| `tags.filters`                  | `["tags", "filters"]`                  |
-| `tags.filters.$sub.active`     | `["tags", "filters", "active"]`        |
+| Access                      | `queryKey`                                     |
+| --------------------------- | ---------------------------------------------- |
+| `tags`                      | `["tags"]`                                     |
+| `tags.all`                  | `["tags", "all"]`                              |
+| `tags.byId`                 | `["tags", "byId"]` (partial, for invalidation) |
+| `tags.byId("1")`            | `["tags", "byId", "1"]`                        |
+| `tags.byId("1").$sub.posts` | `["tags", "byId", "1", "posts"]`               |
+| `tags.filters`              | `["tags", "filters"]`                          |
+| `tags.filters.$sub.active`  | `["tags", "filters", "active"]`                |
 
 Every node with a `queryFn` is directly spreadable into `useQuery`, `fetchQuery`, etc.
 
@@ -119,15 +119,21 @@ Merges multiple query trees into a single namespace object. Duplicate scope name
 ```ts
 import { createQueryOptions, mergeQueryOptions } from 'structured-queries'
 
-const tags = createQueryOptions('tags', { /* ... */ })
-const news = createQueryOptions('news', { /* ... */ })
-const users = createQueryOptions('users', { /* ... */ })
+const tags = createQueryOptions('tags', {
+  /* ... */
+})
+const news = createQueryOptions('news', {
+  /* ... */
+})
+const users = createQueryOptions('users', {
+  /* ... */
+})
 
 const queries = mergeQueryOptions(tags, news, users)
 
-queries.tags.all          // { queryKey: ["tags", "all"], queryFn: ... }
-queries.news.latest       // { queryKey: ["news", "latest"], queryFn: ... }
-queries.users.me          // { queryKey: ["users", "me"], queryFn: ... }
+queries.tags.all // { queryKey: ["tags", "all"], queryFn: ... }
+queries.news.latest // { queryKey: ["news", "latest"], queryFn: ... }
+queries.users.me // { queryKey: ["users", "me"], queryFn: ... }
 ```
 
 ### `inferQueryKeys<T>`
@@ -166,18 +172,18 @@ A node with a `queryFn` and no children.
 A function that receives a parameter and returns a node definition with a `queryKey` segment.
 
 ```ts
-(id: string) => ({
+;(id: string) => ({
   queryKey: [id],
-  queryFn: () => fetch(`/api/items/${id}`).then(r => r.json()),
+  queryFn: () => fetch(`/api/items/${id}`).then((r) => r.json()),
 })
 ```
 
 Multi-segment keys are supported:
 
 ```ts
-(p: { owner: string; name: string }) => ({
+;(p: { owner: string; name: string }) => ({
   queryKey: [p.owner, p.name],
-  queryFn: () => fetch(`/api/repos/${p.owner}/${p.name}`).then(r => r.json()),
+  queryFn: () => fetch(`/api/repos/${p.owner}/${p.name}`).then((r) => r.json()),
 })
 ```
 
