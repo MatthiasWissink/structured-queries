@@ -155,14 +155,10 @@ describe('TanStack Query integration', () => {
               },
               issue: (issueId: string) => ({
                 queryKey: [issueId],
-                queryFn: () =>
-                  Promise.resolve({ orgId, projectId, issueId }),
+                queryFn: () => Promise.resolve({ orgId, projectId, issueId }),
                 subQueries: {
                   comments: {
-                    queryFn: () =>
-                      Promise.resolve([
-                        { author: 'Bob', body: 'looks good' },
-                      ]),
+                    queryFn: () => Promise.resolve([{ author: 'Bob', body: 'looks good' }]),
                   },
                 },
               }),
@@ -183,16 +179,19 @@ describe('TanStack Query integration', () => {
     })
 
     it('triple-nested param → param → param queryKey', () => {
-      expect(
-        org.byId('acme').$sub.project(42).$sub.issue('ISS-1').queryKey,
-      ).toEqual(['org', 'byId', 'acme', 'project', 42, 'issue', 'ISS-1'])
+      expect(org.byId('acme').$sub.project(42).$sub.issue('ISS-1').queryKey).toEqual([
+        'org',
+        'byId',
+        'acme',
+        'project',
+        42,
+        'issue',
+        'ISS-1',
+      ])
     })
 
     it('deeply nested static child after params', () => {
-      expect(
-        org.byId('acme').$sub.project(42).$sub.issue('ISS-1').$sub.comments
-          .queryKey,
-      ).toEqual([
+      expect(org.byId('acme').$sub.project(42).$sub.issue('ISS-1').$sub.comments.queryKey).toEqual([
         'org',
         'byId',
         'acme',
@@ -205,9 +204,7 @@ describe('TanStack Query integration', () => {
     })
 
     it('double-nested parameterised fetchQuery works', async () => {
-      const data = await queryClient.fetchQuery(
-        org.byId('acme').$sub.project(42),
-      )
+      const data = await queryClient.fetchQuery(org.byId('acme').$sub.project(42))
       expect(data).toEqual({ orgId: 'acme', projectId: 42 })
     })
 
@@ -230,16 +227,12 @@ describe('TanStack Query integration', () => {
     })
 
     it('static sub-query under parameterised node fetchQuery', async () => {
-      const data = await queryClient.fetchQuery(
-        org.byId('acme').$sub.project(42).$sub.tasks,
-      )
+      const data = await queryClient.fetchQuery(org.byId('acme').$sub.project(42).$sub.tasks)
       expect(data).toEqual([{ task: 'build' }])
     })
 
     it('static sub-query nested under param → static', async () => {
-      const data = await queryClient.fetchQuery(
-        org.byId('acme').$sub.members.$sub.active,
-      )
+      const data = await queryClient.fetchQuery(org.byId('acme').$sub.members.$sub.active)
       expect(data).toEqual([{ name: 'Alice', active: true }])
     })
 
@@ -247,23 +240,15 @@ describe('TanStack Query integration', () => {
       await queryClient.fetchQuery(org.byId('acme').$sub.project(1))
       await queryClient.fetchQuery(org.byId('acme').$sub.project(2))
 
-      const data1 = queryClient.getQueryData(
-        org.byId('acme').$sub.project(1).queryKey,
-      )
-      const data2 = queryClient.getQueryData(
-        org.byId('acme').$sub.project(2).queryKey,
-      )
+      const data1 = queryClient.getQueryData(org.byId('acme').$sub.project(1).queryKey)
+      const data2 = queryClient.getQueryData(org.byId('acme').$sub.project(2).queryKey)
       expect(data1).toEqual({ orgId: 'acme', projectId: 1 })
       expect(data2).toEqual({ orgId: 'acme', projectId: 2 })
     })
 
     it('invalidation at mid-level cascades to deeper queries', async () => {
-      await queryClient.fetchQuery(
-        org.byId('corp').$sub.project(10).$sub.issue('A').$sub.comments,
-      )
-      await queryClient.fetchQuery(
-        org.byId('corp').$sub.project(10).$sub.tasks,
-      )
+      await queryClient.fetchQuery(org.byId('corp').$sub.project(10).$sub.issue('A').$sub.comments)
+      await queryClient.fetchQuery(org.byId('corp').$sub.project(10).$sub.tasks)
 
       // Invalidate at the project level — should cascade to children
       await queryClient.invalidateQueries({
@@ -271,8 +256,7 @@ describe('TanStack Query integration', () => {
       })
 
       const commentsState = queryClient.getQueryState(
-        org.byId('corp').$sub.project(10).$sub.issue('A').$sub.comments
-          .queryKey,
+        org.byId('corp').$sub.project(10).$sub.issue('A').$sub.comments.queryKey,
       )
       const tasksState = queryClient.getQueryState(
         org.byId('corp').$sub.project(10).$sub.tasks.queryKey,
@@ -286,19 +270,13 @@ describe('TanStack Query integration', () => {
 
       await queryClient.invalidateQueries({ queryKey: org.queryKey })
 
-      const state = queryClient.getQueryState(
-        org.byId('root-test').$sub.members.queryKey,
-      )
+      const state = queryClient.getQueryState(org.byId('root-test').$sub.members.queryKey)
       expect(state?.isInvalidated).toBe(true)
     })
 
     it('different orgs produce independent caches at every depth', async () => {
-      await queryClient.fetchQuery(
-        org.byId('alpha').$sub.project(1).$sub.issue('X'),
-      )
-      await queryClient.fetchQuery(
-        org.byId('beta').$sub.project(1).$sub.issue('X'),
-      )
+      await queryClient.fetchQuery(org.byId('alpha').$sub.project(1).$sub.issue('X'))
+      await queryClient.fetchQuery(org.byId('beta').$sub.project(1).$sub.issue('X'))
 
       const alphaData = queryClient.getQueryData(
         org.byId('alpha').$sub.project(1).$sub.issue('X').queryKey,

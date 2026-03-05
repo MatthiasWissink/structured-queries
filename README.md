@@ -129,15 +129,21 @@ Merges multiple query trees into a single namespace object. Duplicate scope name
 ```ts
 import { createQueryOptions, mergeQueryOptions } from 'structured-queries'
 
-const tags = createQueryOptions('tags', { /* ... */ })
-const news = createQueryOptions('news', { /* ... */ })
-const users = createQueryOptions('users', { /* ... */ })
+const tags = createQueryOptions('tags', {
+  /* ... */
+})
+const news = createQueryOptions('news', {
+  /* ... */
+})
+const users = createQueryOptions('users', {
+  /* ... */
+})
 
 const queries = mergeQueryOptions(tags, news, users)
 
-queries.tags.all     // { queryKey: ["tags", "all"], queryFn: ... }
-queries.news.latest  // { queryKey: ["news", "latest"], queryFn: ... }
-queries.users.me     // { queryKey: ["users", "me"], queryFn: ... }
+queries.tags.all // { queryKey: ["tags", "all"], queryFn: ... }
+queries.news.latest // { queryKey: ["news", "latest"], queryFn: ... }
+queries.users.me // { queryKey: ["users", "me"], queryFn: ... }
 ```
 
 ### `inferQueryKeys<T>`
@@ -178,7 +184,7 @@ type TagKeys = inferQueryKeys<typeof tags>
 <summary><strong>Dynamic (Parameterised) Node</strong> — a function returning a node definition with a <code>queryKey</code> segment</summary>
 
 ```ts
-(id: string) => ({
+;(id: string) => ({
   queryKey: [id],
   queryFn: () => fetch(`/api/items/${id}`).then((r) => r.json()),
 })
@@ -187,7 +193,7 @@ type TagKeys = inferQueryKeys<typeof tags>
 Multi-segment keys are supported:
 
 ```ts
-(p: { owner: string; name: string }) => ({
+;(p: { owner: string; name: string }) => ({
   queryKey: [p.owner, p.name],
   queryFn: () => fetch(`/api/repos/${p.owner}/${p.name}`).then((r) => r.json()),
 })
@@ -220,8 +226,7 @@ Works on both static and dynamic nodes. Directly compatible with `useInfiniteQue
 const pages = createQueryOptions('pages', {
   // Static infinite query
   list: {
-    queryFn: ({ pageParam }) =>
-      fetch(`/api/pages?cursor=${pageParam}`).then((r) => r.json()),
+    queryFn: ({ pageParam }) => fetch(`/api/pages?cursor=${pageParam}`).then((r) => r.json()),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   },
@@ -325,20 +330,20 @@ All standard TanStack Query options are supported on any node:
 
 ### Exported Types
 
-| Type                     | Description                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------- |
-| `QueryNodeOptions`       | Query options attachable to any node (everything except `queryKey`)           |
-| `LeafDefinition`         | Static leaf node definition (requires `queryFn`)                             |
-| `InfiniteLeafDefinition` | Infinite query leaf definition (`queryFn` + pagination params)               |
-| `ScopeDefinition`        | Scope node definition (has `subQueries`, optional `queryFn`)                 |
-| `DynamicDefinition`      | Dynamic node definition (function returning a node)                          |
-| `NodeDefinition`         | Union of all node definition shapes                                          |
-| `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)            |
-| `StructuredQuery`        | Root output type of `createQueryOptions`                                     |
-| `MergedQuery`            | Output type of `mergeQueryOptions`                                           |
-| `BuildTree`              | Recursive mapped type that builds the output tree                            |
-| `EnsureUniqueScopes`     | Compile-time constraint rejecting duplicate scope names                      |
-| `inferQueryKeys`         | Extracts the union of all query key tuples from a tree                       |
+| Type                     | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| `QueryNodeOptions`       | Query options attachable to any node (everything except `queryKey`) |
+| `LeafDefinition`         | Static leaf node definition (requires `queryFn`)                    |
+| `InfiniteLeafDefinition` | Infinite query leaf definition (`queryFn` + pagination params)      |
+| `ScopeDefinition`        | Scope node definition (has `subQueries`, optional `queryFn`)        |
+| `DynamicDefinition`      | Dynamic node definition (function returning a node)                 |
+| `NodeDefinition`         | Union of all node definition shapes                                 |
+| `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)   |
+| `StructuredQuery`        | Root output type of `createQueryOptions`                            |
+| `MergedQuery`            | Output type of `mergeQueryOptions`                                  |
+| `BuildTree`              | Recursive mapped type that builds the output tree                   |
+| `EnsureUniqueScopes`     | Compile-time constraint rejecting duplicate scope names             |
+| `inferQueryKeys`         | Extracts the union of all query key tuples from a tree              |
 
 ### Requirements
 
