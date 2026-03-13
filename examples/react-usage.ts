@@ -1,19 +1,16 @@
 /**
- * Real-world usage examples for structured-queries with React and TanStack Query v5.
+ * Real-world usage examples for structured-queries with TanStack Query v5.
  *
  * This file is type-checked but not executed. It demonstrates how structured-queries
- * integrates with useQuery, useSuspenseQuery, useInfiniteQuery, useSuspenseInfiniteQuery,
- * prefetchQuery, ensureQueryData, and mergeQueryOptions.
+ * integrates with QueryClient methods (fetchQuery, prefetchQuery, ensureQueryData,
+ * fetchInfiniteQuery, invalidateQueries) and can be used with any framework adapter.
+ *
+ * Framework hooks (useQuery, useSuspenseQuery, etc.) are shown in comments since
+ * this library is framework-agnostic and doesn't depend on any specific adapter.
  */
 
-import {
-  QueryClient,
-  useQuery,
-  useSuspenseQuery,
-  useInfiniteQuery,
-  useSuspenseInfiniteQuery,
-} from '@tanstack/react-query'
-import { createQueryOptions, mergeQueryOptions } from '../src/index'
+import { QueryClient } from '@tanstack/query-core'
+import { createStructuredQuery } from '../src/index'
 
 // ---------------------------------------------------------------------------
 // 1. Define structured query trees for your domains
@@ -31,13 +28,13 @@ interface Comment {
   author: string
 }
 
-const todos = createQueryOptions('todos', {
+const todos = createStructuredQuery('todos', {
   all: {
     queryFn: (): Promise<Todo[]> => fetch('/api/todos').then((r) => r.json() as Promise<Todo[]>),
     staleTime: 30_000,
   },
   byId: (id: string) => ({
-    queryKey: [id] as const,
+    params: [id] as const,
     queryFn: (): Promise<Todo> => fetch(`/api/todos/${id}`).then((r) => r.json() as Promise<Todo>),
     staleTime: 60_000,
     subQueries: {
@@ -59,7 +56,7 @@ interface FeedPage {
   nextCursor: number | null
 }
 
-const feed = createQueryOptions('feed', {
+const feed = createStructuredQuery('feed', {
   timeline: {
     queryFn: ({ pageParam }: { pageParam: number }): Promise<FeedPage> =>
       fetch(`/api/feed?cursor=${String(pageParam)}`).then((r) => r.json() as Promise<FeedPage>),
@@ -80,9 +77,9 @@ interface SearchPage {
   nextPage: number | null
 }
 
-const search = createQueryOptions('search', {
+const search = createStructuredQuery('search', {
   results: (term: string) => ({
-    queryKey: [term] as const,
+    params: [term] as const,
     queryFn: ({ pageParam }: { pageParam: number }): Promise<SearchPage> =>
       fetch(`/api/search?q=${term}&page=${String(pageParam)}`).then(
         (r) => r.json() as Promise<SearchPage>,
@@ -93,74 +90,26 @@ const search = createQueryOptions('search', {
 })
 
 // ---------------------------------------------------------------------------
-// 2. Merge multiple domains into a single namespace
+// 2. Combine multiple domains with plain objects (v2 pattern)
 // ---------------------------------------------------------------------------
 
-const api = mergeQueryOptions(todos, feed, search)
+const api = { todos, feed, search }
 
 // Access via namespace: api.todos.all, api.feed.timeline, etc.
 void api
 
 // ---------------------------------------------------------------------------
-// 3. useQuery — basic queries
+// 3. Framework-agnostic usage with QueryClient
 // ---------------------------------------------------------------------------
 
-function TodoList() {
-  // Static query — spread the options object directly
-  const { data: allTodos } = useQuery(todos.all)
-
-  // Parameterised query
-  const { data: todo } = useQuery(todos.byId('123'))
-
-  // Nested sub-query
-  const { data: comments } = useQuery(todos.byId('123').$sub.comments)
-
-  return { allTodos, todo, comments }
-}
+// With any TanStack Query adapter, pass structured options directly:
+//   React:  useQuery(todos.all)
+//   Vue:    useQuery(todos.all)
+//   Solid:  createQuery(() => todos.all)
+//   Angular: injectQuery(() => todos.all)
 
 // ---------------------------------------------------------------------------
-// 4. useSuspenseQuery — guaranteed data in Suspense boundaries
-// ---------------------------------------------------------------------------
-
-function TodoDetail({ id }: { id: string }) {
-  // useSuspenseQuery guarantees `data` is defined (no loading state)
-  const { data: todo } = useSuspenseQuery(todos.byId(id))
-
-  const { data: comments } = useSuspenseQuery(todos.byId(id).$sub.comments)
-
-  return { todo, comments }
-}
-
-// ---------------------------------------------------------------------------
-// 5. useInfiniteQuery — paginated / cursor-based queries
-// ---------------------------------------------------------------------------
-
-function FeedTimeline() {
-  // Static infinite query
-  const { data, fetchNextPage, hasNextPage } = useInfiniteQuery(feed.timeline)
-
-  return { data, fetchNextPage, hasNextPage }
-}
-
-function SearchResults({ term }: { term: string }) {
-  // Dynamic (parameterised) infinite query
-  const { data, fetchNextPage } = useInfiniteQuery(search.results(term))
-
-  return { data, fetchNextPage }
-}
-
-// ---------------------------------------------------------------------------
-// 6. useSuspenseInfiniteQuery — suspense + infinite
-// ---------------------------------------------------------------------------
-
-function SuspenseFeed() {
-  const { data } = useSuspenseInfiniteQuery(feed.timeline)
-
-  return { data }
-}
-
-// ---------------------------------------------------------------------------
-// 7. Server-side / loader patterns (prefetchQuery, ensureQueryData)
+// 4. Server-side / loader patterns (prefetchQuery, ensureQueryData)
 // ---------------------------------------------------------------------------
 
 async function loader(queryClient: QueryClient) {
@@ -177,7 +126,21 @@ async function loader(queryClient: QueryClient) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Cache management — invalidation by scope
+// 5. Infinite query integration
+// ---------------------------------------------------------------------------
+
+async function infiniteExamples(queryClient: QueryClient) {
+  // Static infinite query
+  const feedData = await queryClient.fetchInfiniteQuery(feed.timeline)
+
+  // Dynamic (parameterised) infinite query
+  const searchData = await queryClient.fetchInfiniteQuery(search.results('hello'))
+
+  return { feedData, searchData }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Cache management — invalidation by scope
 // ---------------------------------------------------------------------------
 
 async function invalidationExamples(queryClient: QueryClient) {
@@ -199,10 +162,6 @@ async function invalidationExamples(queryClient: QueryClient) {
 }
 
 // Suppress unused variable warnings — this file is for type-checking only
-void TodoList
-void TodoDetail
-void FeedTimeline
-void SearchResults
-void SuspenseFeed
 void loader
+void infiniteExamples
 void invalidationExamples

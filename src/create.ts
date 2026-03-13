@@ -1,5 +1,5 @@
 import type { DataTag, DefaultError } from '@tanstack/query-core'
-import type { BuildTree, NodeDefinition } from './types.js'
+import type { BuildTree, NodeDefinition, ValidateDefinition } from './types.js'
 
 /** Resolve a node's options by attaching queryKey (and queryFn when present). */
 function resolveNodeOptions(
@@ -8,14 +8,16 @@ function resolveNodeOptions(
   rest: Record<string, unknown>,
 ): Record<string, unknown> {
   rest.queryKey = queryKey
+  // skipToken is a symbol (truthy), so this guard correctly passes it through.
+  // Do NOT change to `typeof queryFn === 'function'` — that would break skipToken support.
   if (queryFn) {
     rest.queryFn = queryFn
   }
   return rest
 }
 
-/** Attach recursively-built sub-queries to a resolved node under `$sub`. */
-function attachSubQueries(
+/** Attach recursively-built children under an enumerable $sub property. */
+function attachChildren(
   resolved: Record<string, unknown>,
   parentKey: readonly unknown[],
   subQueries: unknown,
@@ -48,12 +50,17 @@ function buildNode(
       const result = (definition as unknown as (...args: unknown[]) => Record<string, unknown>)(
         ...args,
       )
-      const { queryKey: paramSegments, subQueries, queryFn, ...rest } = result
+      if (!('params' in result)) {
+        throw new TypeError(
+          `[structured-queries] Dynamic node must return an object with a 'params' property`,
+        )
+      }
+      const { params: paramSegments, subQueries, queryFn, ...rest } = result
       const fullKey = [...nodeKey, ...(paramSegments as unknown[])] as readonly unknown[]
 
       const resolved = resolveNodeOptions(fullKey, queryFn, rest)
 
-      attachSubQueries(resolved, fullKey, subQueries)
+      attachChildren(resolved, fullKey, subQueries)
 
       return resolved
     }
@@ -68,7 +75,7 @@ function buildNode(
   const { subQueries, queryFn, ...rest } = definition as unknown as Record<string, unknown>
   const resolved = resolveNodeOptions(nodeKey, queryFn, rest)
 
-  attachSubQueries(resolved, nodeKey, subQueries)
+  attachChildren(resolved, nodeKey, subQueries)
 
   return resolved
 }
@@ -79,22 +86,22 @@ function buildNode(
  * Each node in the tree exposes a `queryKey` readonly tuple and an optional
  * `queryFn`. The output is structurally compatible with TanStack Query v5's
  * `useQuery`, `fetchQuery`, etc.
+ *
+ * @see {@link StructuredQuery} for the root output type
  */
-export function createQueryOptions<
+export function createStructuredQuery<
   TScope extends string,
   TDefinition extends Record<string, NodeDefinition>,
 >(
   scope: TScope,
-  definition: TDefinition,
+  definition: TDefinition & ValidateDefinition<TDefinition>,
 ): {
   queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-  _scope: TScope
 } & BuildTree<readonly [TScope], TDefinition> {
   const rootKey = [scope] as unknown as DataTag<readonly [TScope], unknown, DefaultError>
 
   const result: Record<string, unknown> = {
     queryKey: rootKey,
-    _scope: scope,
   }
 
   for (const [name, def] of Object.entries(definition)) {
@@ -103,6 +110,5 @@ export function createQueryOptions<
 
   return result as {
     queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-    _scope: TScope
   } & BuildTree<readonly [TScope], TDefinition>
 }

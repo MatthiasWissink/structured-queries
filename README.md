@@ -29,7 +29,7 @@ Inspired by [query-key-factory](https://github.com/lukemorales/query-key-factory
 - **Infinite queries** — first-class `useInfiniteQuery` / `fetchInfiniteQuery` support
 - **Partial keys** — uncalled dynamic nodes expose `.queryKey` for invalidation
 - **Type-safe cache** — `DataTag`-branded keys for typed `getQueryData`
-- **`mergeQueryOptions`** — combine domain trees into a single namespace
+- **`skipToken` support** — conditional queries with full type narrowing
 - **`inferQueryKeys`** — extract the union of all possible key tuples
 - **Options passthrough** — `staleTime`, `gcTime`, `retry`, and all other TanStack Query options
 - **Zero runtime dependencies** — only `@tanstack/query-core >=5` as a peer dep
@@ -46,15 +46,15 @@ npm install structured-queries
 ## Quick Start
 
 ```ts
-import { createQueryOptions } from 'structured-queries'
+import { createStructuredQuery } from 'structured-queries'
 import { useQuery } from '@tanstack/react-query'
 
-const todos = createQueryOptions('todos', {
+const todos = createStructuredQuery('todos', {
   all: {
     queryFn: () => fetch('/api/todos').then((r) => r.json()),
   },
   byId: (id: string) => ({
-    queryKey: [id],
+    params: [id],
     queryFn: () => fetch(`/api/todos/${id}`).then((r) => r.json()),
   }),
 })
@@ -63,7 +63,7 @@ const todos = createQueryOptions('todos', {
 const { data } = useQuery(todos.all)
 
 // Fetch a single todo
-const { data } = useQuery(todos.byId('abc'))
+const { data: todo } = useQuery(todos.byId('abc'))
 
 // Invalidate everything under "todos"
 queryClient.invalidateQueries({ queryKey: todos.queryKey })
@@ -74,21 +74,21 @@ queryClient.invalidateQueries({ queryKey: todos.byId.queryKey })
 
 ## API Reference
 
-### `createQueryOptions(scope, definition)`
+### `createStructuredQuery(scope, definition)`
 
 Creates a structured query tree for a single domain scope.
 
 ```ts
-const tags = createQueryOptions('tags', {
+const tags = createStructuredQuery('tags', {
   // Static leaf — queryFn required
   all: {
     queryFn: () => api.getTags(),
     staleTime: 60_000,
   },
 
-  // Dynamic (parameterised) node — function returning queryKey + queryFn
+  // Dynamic (parameterised) node — function returning params + queryFn
   byId: (id: string) => ({
-    queryKey: [id],
+    params: [id],
     queryFn: () => api.getTag(id),
     subQueries: {
       posts: {
@@ -120,30 +120,30 @@ const tags = createQueryOptions('tags', {
 | `tags.filters`              | `["tags", "filters"]`                          |
 | `tags.filters.$sub.active`  | `["tags", "filters", "active"]`                |
 
-Every node with a `queryFn` is directly spreadable into `useQuery`, `fetchQuery`, etc.
+Every node with a `queryFn` is directly compatible with `useQuery`, `fetchQuery`, etc.
 
-### `mergeQueryOptions(...queries)`
+### Combining Multiple Domains
 
-Merges multiple query trees into a single namespace object. Duplicate scope names produce a **compile-time error**.
+Use plain objects to combine multiple query trees into a single namespace:
 
 ```ts
-import { createQueryOptions, mergeQueryOptions } from 'structured-queries'
+import { createStructuredQuery } from 'structured-queries'
 
-const tags = createQueryOptions('tags', {
+const tags = createStructuredQuery('tags', {
   /* ... */
 })
-const news = createQueryOptions('news', {
+const news = createStructuredQuery('news', {
   /* ... */
 })
-const users = createQueryOptions('users', {
+const users = createStructuredQuery('users', {
   /* ... */
 })
 
-const queries = mergeQueryOptions(tags, news, users)
+const api = { tags, news, users }
 
-queries.tags.all // { queryKey: ["tags", "all"], queryFn: ... }
-queries.news.latest // { queryKey: ["news", "latest"], queryFn: ... }
-queries.users.me // { queryKey: ["users", "me"], queryFn: ... }
+api.tags.all // { queryKey: ["tags", "all"], queryFn: ... }
+api.news.latest // { queryKey: ["news", "latest"], queryFn: ... }
+api.users.me // { queryKey: ["users", "me"], queryFn: ... }
 ```
 
 ### `inferQueryKeys<T>`
@@ -181,11 +181,11 @@ type TagKeys = inferQueryKeys<typeof tags>
 </details>
 
 <details>
-<summary><strong>Dynamic (Parameterised) Node</strong> — a function returning a node definition with a <code>queryKey</code> segment</summary>
+<summary><strong>Dynamic (Parameterised) Node</strong> — a function returning a node definition with <code>params</code></summary>
 
 ```ts
 ;(id: string) => ({
-  queryKey: [id],
+  params: [id],
   queryFn: () => fetch(`/api/items/${id}`).then((r) => r.json()),
 })
 ```
@@ -194,7 +194,7 @@ Multi-segment keys are supported:
 
 ```ts
 ;(p: { owner: string; name: string }) => ({
-  queryKey: [p.owner, p.name],
+  params: [p.owner, p.name],
   queryFn: () => fetch(`/api/repos/${p.owner}/${p.name}`).then((r) => r.json()),
 })
 ```
@@ -223,7 +223,7 @@ Multi-segment keys are supported:
 Works on both static and dynamic nodes. Directly compatible with `useInfiniteQuery` / `fetchInfiniteQuery`.
 
 ```ts
-const pages = createQueryOptions('pages', {
+const pages = createStructuredQuery('pages', {
   // Static infinite query
   list: {
     queryFn: ({ pageParam }) => fetch(`/api/pages?cursor=${pageParam}`).then((r) => r.json()),
@@ -233,7 +233,7 @@ const pages = createQueryOptions('pages', {
 
   // Dynamic infinite query
   search: (term: string) => ({
-    queryKey: [term],
+    params: [term],
     queryFn: ({ pageParam }) =>
       fetch(`/api/search?q=${term}&cursor=${pageParam}`).then((r) => r.json()),
     initialPageParam: 0,
@@ -242,7 +242,7 @@ const pages = createQueryOptions('pages', {
 })
 
 const { data } = useInfiniteQuery(pages.list)
-const { data } = useInfiniteQuery(pages.search('hello'))
+const { data: searchData } = useInfiniteQuery(pages.search('hello'))
 ```
 
 `getPreviousPageParam` and `maxPages` are also supported.
@@ -254,9 +254,9 @@ const { data } = useInfiniteQuery(pages.search('hello'))
 Sub-queries can be nested to arbitrary depth — including parameterised nodes inside other parameterised nodes:
 
 ```ts
-const org = createQueryOptions('org', {
+const org = createStructuredQuery('org', {
   byId: (orgId: string) => ({
-    queryKey: [orgId],
+    params: [orgId],
     queryFn: () => api.getOrg(orgId),
     subQueries: {
       members: {
@@ -266,12 +266,12 @@ const org = createQueryOptions('org', {
         },
       },
       project: (projectId: number) => ({
-        queryKey: [projectId],
+        params: [projectId],
         queryFn: () => api.getProject(orgId, projectId),
         subQueries: {
           tasks: { queryFn: () => api.getTasks(orgId, projectId) },
           issue: (issueId: string) => ({
-            queryKey: [issueId],
+            params: [issueId],
             queryFn: () => api.getIssue(orgId, projectId, issueId),
             subQueries: {
               comments: { queryFn: () => api.getComments(orgId, projectId, issueId) },
@@ -294,6 +294,41 @@ queryClient.invalidateQueries({
   queryKey: org.byId('acme').$sub.project(42).queryKey,
 })
 ```
+
+### The `$sub` Namespace
+
+Children of a node are accessible via the `$sub` property. This keeps query options objects clean — when you pass a node to `useQuery` or `fetchQuery`, only standard TanStack Query options are present as top-level properties.
+
+```ts
+// ✅ useQuery receives { queryKey, queryFn, staleTime } — no child properties mixed in
+useQuery(todos.byId('123'))
+
+// Access children explicitly via $sub
+const comments = todos.byId('123').$sub.comments
+```
+
+`$sub` is an enumerable property, so children are visible in IDE autocomplete and included in `Object.keys()` and spread operations. Nodes without `subQueries` have no `$sub` property.
+
+### `skipToken` Support
+
+`structured-queries` supports TanStack Query's `skipToken` for conditional queries. When `skipToken` is used as the `queryFn`, the resolved type correctly includes `SkipToken` in the union, preventing accidental calls:
+
+```ts
+import { skipToken } from '@tanstack/react-query'
+import { createStructuredQuery } from 'structured-queries'
+
+const todos = createStructuredQuery('todos', {
+  byId: (id: string | undefined) => ({
+    params: [id ?? 'none'] as const,
+    queryFn: id ? () => fetch(`/api/todos/${id}`).then((r) => r.json()) : skipToken,
+  }),
+})
+
+// useQuery handles skipToken natively — the query is disabled when id is undefined
+const { data } = useQuery(todos.byId(undefined))
+```
+
+> **Note:** Nodes with `skipToken` in their `queryFn` are not compatible with `useSuspenseQuery`, which requires a real `queryFn`. Use the `enabled` option instead if you need suspense support.
 
 ### Type-Safe Cache Access
 
@@ -326,22 +361,6 @@ All standard TanStack Query options are supported on any node:
 }
 ```
 
-### `skipToken` Is Not Supported
-
-`structured-queries` does not support TanStack Query's `skipToken` in `queryFn`. This is intentional — excluding `skipToken` from the resolved types ensures that every node is directly compatible with `useSuspenseQuery`, `useSuspenseInfiniteQuery`, and other APIs that require a real `queryFn`.
-
-Use the `enabled` option instead to conditionally disable a query:
-
-```ts
-const todos = createQueryOptions('todos', {
-  byId: (id: string | undefined) => ({
-    queryKey: [id ?? 'none'],
-    queryFn: () => fetch(`/api/todos/${id}`).then((r) => r.json()),
-    enabled: !!id,
-  }),
-})
-```
-
 ## TypeScript
 
 ### Exported Types
@@ -355,10 +374,8 @@ const todos = createQueryOptions('todos', {
 | `DynamicDefinition`      | Dynamic node definition (function returning a node)                 |
 | `NodeDefinition`         | Union of all node definition shapes                                 |
 | `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)   |
-| `StructuredQuery`        | Root output type of `createQueryOptions`                            |
-| `MergedQuery`            | Output type of `mergeQueryOptions`                                  |
+| `StructuredQuery`        | Root output type of `createStructuredQuery`                         |
 | `BuildTree`              | Recursive mapped type that builds the output tree                   |
-| `EnsureUniqueScopes`     | Compile-time constraint rejecting duplicate scope names             |
 | `inferQueryKeys`         | Extracts the union of all query key tuples from a tree              |
 
 ### Requirements

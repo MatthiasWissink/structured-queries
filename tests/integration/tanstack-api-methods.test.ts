@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { QueryClient } from '@tanstack/query-core'
-import { createQueryOptions, mergeQueryOptions } from '../../src/index'
+import { createStructuredQuery } from '../../src/index'
 import { items } from './fixtures'
 
 describe('TanStack Query API methods integration', () => {
@@ -54,7 +54,7 @@ describe('TanStack Query API methods integration', () => {
   describe('setQueryDefaults', () => {
     it('applies defaults via structured queryKey', () => {
       const queryClient = new QueryClient()
-      const defaultItems = createQueryOptions('defaultItems', {
+      const defaultItems = createStructuredQuery('defaultItems', {
         all: {
           queryFn: () => Promise.resolve(['default']),
         },
@@ -67,70 +67,8 @@ describe('TanStack Query API methods integration', () => {
     })
   })
 
-  describe('mergeQueryOptions', () => {
-    const users = createQueryOptions('users', {
-      all: {
-        queryFn: () => Promise.resolve([{ id: '1', name: 'Alice' }]),
-      },
-      byId: (id: string) => ({
-        queryKey: [id],
-        queryFn: () => Promise.resolve({ id, name: `User ${id}` }),
-      }),
-    })
-
-    const posts = createQueryOptions('posts', {
-      all: {
-        queryFn: () => Promise.resolve([{ id: 'p1', title: 'Hello' }]),
-      },
-      bySlug: (slug: string) => ({
-        queryKey: [slug],
-        queryFn: () => Promise.resolve({ slug, title: `Post: ${slug}` }),
-      }),
-    })
-
-    const api = mergeQueryOptions(users, posts)
-
-    it('fetchQuery works for first domain', async () => {
-      const queryClient = new QueryClient()
-      const data = await queryClient.fetchQuery(api.users.all)
-      expect(data).toEqual([{ id: '1', name: 'Alice' }])
-    })
-
-    it('fetchQuery works for second domain', async () => {
-      const queryClient = new QueryClient()
-      const data = await queryClient.fetchQuery(api.posts.bySlug('hello-world'))
-      expect(data).toEqual({ slug: 'hello-world', title: 'Post: hello-world' })
-    })
-
-    it('prefetchQuery works', async () => {
-      const queryClient = new QueryClient()
-      await queryClient.prefetchQuery(api.users.byId('u1'))
-      expect(queryClient.getQueryData(api.users.byId('u1').queryKey)).toEqual({
-        id: 'u1',
-        name: 'User u1',
-      })
-    })
-
-    it('ensureQueryData works', async () => {
-      const queryClient = new QueryClient()
-      const data = await queryClient.ensureQueryData(api.posts.all)
-      expect(data).toEqual([{ id: 'p1', title: 'Hello' }])
-    })
-
-    it('scope invalidation cascades correctly', async () => {
-      const queryClient = new QueryClient()
-      await queryClient.fetchQuery(api.users.all)
-      await queryClient.fetchQuery(api.users.byId('u2'))
-
-      await queryClient.invalidateQueries({ queryKey: api.users.queryKey })
-
-      expect(queryClient.getQueryState(api.users.all.queryKey)?.isInvalidated).toBe(true)
-      expect(queryClient.getQueryState(api.users.byId('u2').queryKey)?.isInvalidated).toBe(true)
-    })
-  })
-
   describe('real-world scenario: project management workflow', () => {
-    const projects = createQueryOptions('projects', {
+    const projects = createStructuredQuery('projects', {
       all: {
         queryFn: () =>
           Promise.resolve([
@@ -140,7 +78,7 @@ describe('TanStack Query API methods integration', () => {
         staleTime: 30_000,
       },
       byId: (id: string) => ({
-        queryKey: [id],
+        params: [id],
         queryFn: () => Promise.resolve({ id, name: `Project ${id}`, memberCount: 5 }),
         staleTime: 60_000,
         subQueries: {
@@ -207,9 +145,9 @@ describe('TanStack Query API methods integration', () => {
 
     it('invalidate project scope → refetch shows updated data', async () => {
       let callCount = 0
-      const dynamicProjects = createQueryOptions('dynProjects', {
+      const dynamicProjects = createStructuredQuery('dynProjects', {
         byId: (id: string) => ({
-          queryKey: [id],
+          params: [id],
           queryFn: () => {
             callCount++
             return Promise.resolve({ id, version: callCount })
@@ -250,7 +188,7 @@ describe('TanStack Query API methods integration', () => {
     })
 
     it('prefetchInfiniteQuery works with structured options', async () => {
-      const feed = createQueryOptions('wfFeed', {
+      const feed = createStructuredQuery('wfFeed', {
         timeline: {
           queryFn: ({ pageParam }: { pageParam: number }) =>
             Promise.resolve({ items: [`item-${String(pageParam)}`], next: pageParam + 1 }),
