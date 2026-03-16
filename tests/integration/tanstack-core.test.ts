@@ -308,14 +308,14 @@ describe('TanStack Query core integration', () => {
     }
 
     it('static node matches queryOptions() shape', () => {
-      const direct = { queryKey: ['tags', 'all'] as const, queryFn: allQueryFn }
+      const direct = { queryKey: ['tags', 'all'], queryFn: allQueryFn }
       expectStructuralMatch(tagsForEquiv.all, direct)
       expect(tagsForEquiv.all.queryFn).toBe(direct.queryFn)
     })
 
     it('parameterised node matches queryOptions() shape', () => {
       const direct = {
-        queryKey: ['tags', 'byId', '123'] as const,
+        queryKey: ['tags', 'byId', '123'],
         queryFn: byIdQueryFn('123'),
       }
       expectStructuralMatch(tagsForEquiv.byId('123'), direct)
@@ -323,7 +323,7 @@ describe('TanStack Query core integration', () => {
 
     it('nested sub-query matches queryOptions() shape', () => {
       const direct = {
-        queryKey: ['tags', 'byId', '456', 'moreInfo'] as const,
+        queryKey: ['tags', 'byId', '456', 'moreInfo'],
         queryFn: moreInfoQueryFn('456'),
       }
       expectStructuralMatch(tagsForEquiv.byId('456').$sub.moreInfo, direct)
@@ -341,7 +341,7 @@ describe('TanStack Query core integration', () => {
       })
 
       const direct = {
-        queryKey: ['extras', 'item'] as const,
+        queryKey: ['extras', 'item'],
         queryFn: () => Promise.resolve('data'),
         staleTime: 5000,
         gcTime: 30000,
@@ -362,12 +362,12 @@ describe('TanStack Query core integration', () => {
           params: [id],
           queryFn: () => Promise.resolve({ id }),
           staleTime: 10000,
-          retry: false as const,
+          retry: false,
         }),
       })
 
       const direct = {
-        queryKey: ['extras', 'byId', 'abc'] as const,
+        queryKey: ['extras', 'byId', 'abc'],
         queryFn: () => Promise.resolve({ id: 'abc' }),
         staleTime: 10000,
         retry: false,

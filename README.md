@@ -319,7 +319,7 @@ import { createStructuredQuery } from 'structured-queries'
 
 const todos = createStructuredQuery('todos', {
   byId: (id: string | undefined) => ({
-    params: [id ?? 'none'] as const,
+    params: [id ?? 'none'],
     queryFn: id ? () => fetch(`/api/todos/${id}`).then((r) => r.json()) : skipToken,
   }),
 })
@@ -365,18 +365,45 @@ All standard TanStack Query options are supported on any node:
 
 ### Exported Types
 
-| Type                     | Description                                                         |
-| ------------------------ | ------------------------------------------------------------------- |
-| `QueryNodeOptions`       | Query options attachable to any node (everything except `queryKey`) |
-| `LeafDefinition`         | Static leaf node definition (requires `queryFn`)                    |
-| `InfiniteLeafDefinition` | Infinite query leaf definition (`queryFn` + pagination params)      |
-| `ScopeDefinition`        | Scope node definition (has `subQueries`, optional `queryFn`)        |
-| `DynamicDefinition`      | Dynamic node definition (function returning a node)                 |
-| `NodeDefinition`         | Union of all node definition shapes                                 |
-| `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)   |
-| `StructuredQuery`        | Root output type of `createStructuredQuery`                         |
-| `BuildTree`              | Recursive mapped type that builds the output tree                   |
-| `inferQueryKeys`         | Extracts the union of all query key tuples from a tree              |
+| Type                     | Description                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `QueryNode`              | Annotation helper for standard query nodes — use to type function parameters |
+| `InfiniteQueryNode`      | Annotation helper for infinite query nodes — use to type function parameters |
+| `DynamicQueryNode`       | Resolved dynamic node in the output tree (callable + `.queryKey`)            |
+| `inferQueryKeys`         | Extracts the union of all possible query key tuples from a tree              |
+| `QueryNodeOptions`       | Query options attachable to any node (everything except `queryKey`)          |
+| `LeafDefinition`         | Static leaf node definition shape (input)                                    |
+| `InfiniteLeafDefinition` | Infinite query leaf definition shape (input)                                 |
+| `ScopeDefinition`        | Scope node definition shape (input)                                          |
+| `DynamicDefinition`      | Dynamic node definition shape (input)                                        |
+| `NodeDefinition`         | Union of all node definition shapes (input)                                  |
+| `StructuredQuery`        | Root output type of `createStructuredQuery` (advanced)                       |
+| `BuildTree`              | Recursive mapped type that builds the output tree (advanced)                 |
+
+`QueryNode` and `InfiniteQueryNode` are structural interfaces for annotating your own functions and variables. They are not the actual return type of `createStructuredQuery` — the resolved type is the raw structural intersection so that hovering nodes shows the full shape immediately.
+
+```ts
+import type { QueryNode } from 'structured-queries'
+
+// Annotate a function that accepts any standard query node
+async function prefetchNode(queryClient: QueryClient, node: QueryNode<readonly string[], unknown>) {
+  await queryClient.prefetchQuery(node)
+}
+
+// Annotate a variable
+const node: QueryNode<readonly ['todos', 'all'], Todo[]> = todos.all
+```
+
+### Gotchas
+
+**Dynamic nodes create a new object on every call.** Calling `todos.byId(id)` allocates a fresh object each time. TanStack Query uses `hashQueryKey` for query identity, so a new object per render won't cause extra fetches or duplicate subscriptions. For most apps this is fine. If you want a stable reference (e.g. for `useEffect` dependencies or passing to child components as props), memoize:
+
+```ts
+const opts = useMemo(() => todos.byId(id), [id])
+const { data } = useQuery(opts)
+```
+
+**`select` at definition time doesn't affect the `DataTag` brand.** Adding `select` to a node definition transforms the data at the hook level, but `getQueryData(todos.all.queryKey)` returns the raw (unselected) type. This matches how TanStack Query's own `queryOptions()` helper works.
 
 ### Requirements
 

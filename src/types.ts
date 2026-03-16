@@ -168,6 +168,55 @@ type MaybeSub<TKey extends readonly unknown[], TChildren extends Record<string, 
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   keyof TChildren extends never ? {} : { $sub: BuildTree<TKey, TChildren> }
 
+/**
+ * A resolved standard query node. Use this type to annotate variables or
+ * function parameters that accept a structured query node.
+ *
+ * @example
+ * ```ts
+ * function prefetch(node: QueryNode<readonly ["todos"], Todo[]>) { ... }
+ * ```
+ */
+export interface QueryNode<
+  TKey extends readonly unknown[],
+  TData = unknown,
+  TError = DefaultError,
+> extends Omit<
+  QueryObserverOptions<TData, TError, TData, TData, TKey & QueryKey>,
+  'queryFn' | 'queryKey'
+> {
+  queryFn: QueryFunction<TData, TKey & QueryKey>
+  queryKey: DataTag<TKey, TData, TError>
+}
+
+/**
+ * A resolved infinite query node. Use this type to annotate variables or
+ * function parameters that accept a structured infinite query node.
+ *
+ * @example
+ * ```ts
+ * function prefetchInfinite(node: InfiniteQueryNode<readonly ["feed"], FeedPage>) { ... }
+ * ```
+ */
+export interface InfiniteQueryNode<
+  TKey extends readonly unknown[],
+  TData = unknown,
+  TError = DefaultError,
+  TPageParam = unknown,
+> extends Omit<
+  InfiniteQueryObserverOptions<
+    TData,
+    TError,
+    InfiniteData<TData, TPageParam>,
+    TKey & QueryKey,
+    TPageParam
+  >,
+  'queryFn' | 'queryKey'
+> {
+  queryFn: QueryFunction<TData, TKey & QueryKey, TPageParam>
+  queryKey: DataTag<TKey, InfiniteData<TData, TPageParam>, TError>
+}
+
 /** Resolve a static node to either InfiniteQueryObserverOptions or QueryObserverOptions */
 type ResolveStaticNode<TDef, TKey extends readonly unknown[]> =
   IsInfiniteDefinition<TDef> extends true

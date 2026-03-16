@@ -71,7 +71,7 @@ describe('reserved property collision detection', () => {
     createStructuredQuery('x', {
       // @ts-expect-error - 'queryFn' collides with a reserved TanStack Query property
       byId: (id: string) => ({
-        params: [id] as const,
+        params: [id],
         queryFn: () => Promise.resolve(id),
         subQueries: {
           queryFn: { queryFn: () => Promise.resolve('oops') },
@@ -184,13 +184,13 @@ describe('type-level tests for createStructuredQuery', () => {
 
   it('inferQueryKeys extracts all key tuples', () => {
     type Keys = inferQueryKeys<typeof tags>
-    const _root: Keys = ['tags'] as const
-    const _all: Keys = ['tags', 'all'] as const
-    const _byId: Keys = ['tags', 'byId'] as const
-    const _byIdParam: Keys = ['tags', 'byId', '123'] as const
-    const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo'] as const
-    const _version: Keys = ['tags', 'byId', '123', 'version'] as const
-    const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2] as const
+    const _root: Keys = ['tags']
+    const _all: Keys = ['tags', 'all']
+    const _byId: Keys = ['tags', 'byId']
+    const _byIdParam: Keys = ['tags', 'byId', '123']
+    const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo']
+    const _version: Keys = ['tags', 'byId', '123', 'version']
+    const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2]
   })
 })
 
@@ -270,7 +270,7 @@ describe('skipToken type narrowing', () => {
   it('dynamic node with conditional skipToken includes SkipToken in queryFn union', () => {
     const q = createStructuredQuery('cond', {
       byId: (id: string | undefined) => ({
-        params: [id ?? ''] as const,
+        params: [id ?? ''],
         queryFn: id ? () => Promise.resolve({ id }) : skipToken,
       }),
     })

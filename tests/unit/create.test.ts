@@ -312,7 +312,7 @@ describe('createStructuredQuery', () => {
     it('dynamic node children are under $sub', () => {
       const q = createStructuredQuery('ns', {
         byId: (id: string) => ({
-          params: [id] as const,
+          params: [id],
           queryFn: () => Promise.resolve(id),
           subQueries: {
             details: {

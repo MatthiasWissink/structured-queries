@@ -6,6 +6,8 @@ export type {
   ScopeDefinition,
   DynamicDefinition,
   NodeDefinition,
+  QueryNode,
+  InfiniteQueryNode,
   DynamicQueryNode,
   StructuredQuery,
   BuildTree,

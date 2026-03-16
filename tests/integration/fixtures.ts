@@ -97,7 +97,7 @@ export const org = createStructuredQuery('org', {
 export function createConditionalQuery(scope: string) {
   return createStructuredQuery(scope, {
     byId: (id: string | undefined) => ({
-      params: [id ?? ''] as const,
+      params: [id ?? ''],
       queryFn: id ? () => Promise.resolve({ id, name: `Item ${id}` }) : skipToken,
     }),
   })

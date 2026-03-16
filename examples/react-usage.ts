@@ -34,7 +34,7 @@ const todos = createStructuredQuery('todos', {
     staleTime: 30_000,
   },
   byId: (id: string) => ({
-    params: [id] as const,
+    params: [id],
     queryFn: (): Promise<Todo> => fetch(`/api/todos/${id}`).then((r) => r.json() as Promise<Todo>),
     staleTime: 60_000,
     subQueries: {
@@ -79,7 +79,7 @@ interface SearchPage {
 
 const search = createStructuredQuery('search', {
   results: (term: string) => ({
-    params: [term] as const,
+    params: [term],
     queryFn: ({ pageParam }: { pageParam: number }): Promise<SearchPage> =>
       fetch(`/api/search?q=${term}&page=${String(pageParam)}`).then(
         (r) => r.json() as Promise<SearchPage>,
