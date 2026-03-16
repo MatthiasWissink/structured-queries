@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { createQueryOptions } from '../../src/index'
+import { skipToken } from '@tanstack/query-core'
+import { createStructuredQuery } from '../../src/index'
 
-describe('createQueryOptions', () => {
+describe('createStructuredQuery', () => {
   const fetchFn = () => Promise.resolve(['tag1', 'tag2'])
-  const tags = createQueryOptions('tags', {
+  const tags = createStructuredQuery('tags', {
     all: {
       queryFn: fetchFn,
       subQueries: {
@@ -13,14 +14,14 @@ describe('createQueryOptions', () => {
       },
     },
     byId: (id: string) => ({
-      queryKey: [id],
+      params: [id],
       queryFn: () => Promise.resolve({ id, name: 'test' }),
       subQueries: {
         moreInfo: {
           queryFn: () => Promise.resolve({ details: true }),
         },
         version: (v: number) => ({
-          queryKey: [v],
+          params: [v],
           queryFn: () => Promise.resolve({ id, version: v }),
         }),
       },
@@ -43,9 +44,9 @@ describe('createQueryOptions', () => {
 
   it('parameterised node queryFn closure', () => {
     let capturedId = ''
-    const closureTags = createQueryOptions('tags', {
+    const closureTags = createStructuredQuery('tags', {
       byId: (id: string) => ({
-        queryKey: [id],
+        params: [id],
         queryFn: () => {
           capturedId = id
           return Promise.resolve({ id })
@@ -80,7 +81,7 @@ describe('createQueryOptions', () => {
   })
 
   it('scope node without queryFn', () => {
-    const grouped = createQueryOptions('tags', {
+    const grouped = createStructuredQuery('tags', {
       filters: {
         subQueries: {
           active: {
@@ -96,15 +97,14 @@ describe('createQueryOptions', () => {
   })
 
   it('empty definition', () => {
-    const empty = createQueryOptions('empty', {})
+    const empty = createStructuredQuery('empty', {})
     expect(empty.queryKey).toEqual(['empty'])
-    expect(empty._scope).toBe('empty')
   })
 
   it('multi-segment dynamic keys', () => {
-    const repos = createQueryOptions('repos', {
+    const repos = createStructuredQuery('repos', {
       byOwnerAndName: (p: { owner: string; name: string }) => ({
-        queryKey: [p.owner, p.name],
+        params: [p.owner, p.name],
         queryFn: () => Promise.resolve({ owner: p.owner, name: p.name }),
       }),
     })
@@ -119,7 +119,7 @@ describe('createQueryOptions', () => {
   })
 
   it('extra query options passthrough', () => {
-    const opts = createQueryOptions('tags', {
+    const opts = createStructuredQuery('tags', {
       all: {
         queryFn: () => Promise.resolve([]),
         staleTime: 60_000,
@@ -140,7 +140,7 @@ describe('createQueryOptions', () => {
   })
 
   it('static infinite query node', () => {
-    const pages = createQueryOptions('pages', {
+    const pages = createStructuredQuery('pages', {
       list: {
         queryFn: ({ pageParam }: { pageParam: number }) =>
           Promise.resolve({ items: ['a'], next: pageParam + 1 }),
@@ -157,9 +157,9 @@ describe('createQueryOptions', () => {
 
   it('multi-parameter dynamic node queryKey and queryFn', () => {
     type Filter = { status: string; priority: number }
-    const tasks = createQueryOptions('tasks', {
+    const tasks = createStructuredQuery('tasks', {
       search: (userId: string, page: number, filter: Filter) => ({
-        queryKey: [userId, page],
+        params: [userId, page],
         queryFn: () => Promise.resolve({ userId, page, filter }),
       }),
     })
@@ -175,9 +175,9 @@ describe('createQueryOptions', () => {
   })
 
   it('multi-parameter dynamic node with sub-queries', () => {
-    const reports = createQueryOptions('reports', {
+    const reports = createStructuredQuery('reports', {
       byRange: (start: Date, end: Date, format: string) => ({
-        queryKey: [start.toISOString(), end.toISOString(), format],
+        params: [start.toISOString(), end.toISOString(), format],
         queryFn: () => Promise.resolve({ start, end, format }),
         subQueries: {
           summary: {
@@ -209,9 +209,9 @@ describe('createQueryOptions', () => {
   it('multi-parameter dynamic node closure captures all args', () => {
     type Opts = { verbose: boolean }
     let captured: { a: number; b: string; c: Opts } | undefined
-    const q = createQueryOptions('test', {
+    const q = createStructuredQuery('test', {
       run: (a: number, b: string, c: Opts) => ({
-        queryKey: [a, b],
+        params: [a, b],
         queryFn: () => {
           captured = { a, b, c }
           return Promise.resolve(captured)
@@ -230,9 +230,9 @@ describe('createQueryOptions', () => {
   })
 
   it('dynamic infinite query node', () => {
-    const search = createQueryOptions('search', {
+    const search = createStructuredQuery('search', {
       results: (term: string) => ({
-        queryKey: [term],
+        params: [term],
         queryFn: ({ pageParam }: { pageParam: number }) =>
           Promise.resolve({ results: [term], next: pageParam + 1 }),
         initialPageParam: 0,
@@ -244,5 +244,102 @@ describe('createQueryOptions', () => {
     expect(search.results('hello').queryKey).toEqual(['search', 'results', 'hello'])
     expect(search.results('hello').initialPageParam).toBe(0)
     expect(search.results('hello').getNextPageParam).toBeDefined()
+  })
+
+  // ---------------------------------------------------------------------------
+  // skipToken passthrough test (US3 - T021)
+  // ---------------------------------------------------------------------------
+
+  it('resolveNodeOptions passes through skipToken unchanged', () => {
+    const q = createStructuredQuery('skip', {
+      conditional: {
+        queryFn: skipToken,
+      },
+    })
+    // skipToken is a symbol (truthy), so it should pass through the `if (queryFn)` guard
+    expect(q.conditional.queryFn).toBe(skipToken)
+  })
+
+  // ---------------------------------------------------------------------------
+  // $sub child namespace behavior tests
+  // ---------------------------------------------------------------------------
+
+  describe('$sub child namespace', () => {
+    const withChildren = createStructuredQuery('ns', {
+      parent: {
+        queryFn: () => Promise.resolve('parent'),
+        subQueries: {
+          child: {
+            queryFn: () => Promise.resolve('child'),
+          },
+        },
+      },
+    })
+
+    it('children are accessible via $sub', () => {
+      expect(withChildren.parent.$sub.child).toBeDefined()
+      expect(withChildren.parent.$sub.child.queryKey).toEqual(['ns', 'parent', 'child'])
+    })
+
+    it('$sub is included in Object.keys()', () => {
+      const keys = Object.keys(withChildren.parent)
+      expect(keys).toContain('$sub')
+      expect(keys).toContain('queryKey')
+      expect(keys).toContain('queryFn')
+    })
+
+    it('$sub is included in spread', () => {
+      const spread = { ...withChildren.parent }
+      expect(spread).toHaveProperty('$sub')
+      expect(spread).toHaveProperty('queryKey')
+      expect(spread).toHaveProperty('queryFn')
+    })
+
+    it('$sub children are enumerable within $sub', () => {
+      const childKeys = Object.keys(withChildren.parent.$sub)
+      expect(childKeys).toContain('child')
+    })
+
+    it('nodes without subQueries have no $sub property', () => {
+      const noChildren = createStructuredQuery('ns', {
+        leaf: {
+          queryFn: () => Promise.resolve('leaf'),
+        },
+      })
+      expect(noChildren.leaf).not.toHaveProperty('$sub')
+    })
+
+    it('dynamic node children are under $sub', () => {
+      const q = createStructuredQuery('ns', {
+        byId: (id: string) => ({
+          params: [id],
+          queryFn: () => Promise.resolve(id),
+          subQueries: {
+            details: {
+              queryFn: () => Promise.resolve('details'),
+            },
+          },
+        }),
+      })
+
+      const resolved = q.byId('abc')
+      expect(resolved.$sub.details).toBeDefined()
+      expect(resolved.$sub.details.queryKey).toEqual(['ns', 'byId', 'abc', 'details'])
+      expect(Object.keys(resolved.$sub)).toContain('details')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Runtime assertion tests
+  // ---------------------------------------------------------------------------
+
+  it('throws on dynamic node missing params property', () => {
+    expect(() => {
+      const q = createStructuredQuery('bad', {
+        // @ts-expect-error - intentionally invalid for runtime test
+        broken: () => ({ queryFn: () => Promise.resolve('oops') }),
+      })
+      ;(q.broken as unknown as () => unknown)()
+    }).toThrow(/params/)
   })
 })

@@ -1,5 +1,4 @@
-export { createQueryOptions } from './create.js'
-export { mergeQueryOptions } from './merge.js'
+export { createStructuredQuery } from './create.js'
 export type {
   QueryNodeOptions,
   LeafDefinition,
@@ -7,10 +6,10 @@ export type {
   ScopeDefinition,
   DynamicDefinition,
   NodeDefinition,
+  QueryNode,
+  InfiniteQueryNode,
   DynamicQueryNode,
   StructuredQuery,
-  MergedQuery,
   BuildTree,
-  EnsureUniqueScopes,
   inferQueryKeys,
 } from './types.js'

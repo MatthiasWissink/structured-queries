@@ -1,13 +1,14 @@
 import { expect } from 'vitest'
-import { createQueryOptions } from '../../src/index'
+import { skipToken } from '@tanstack/query-core'
+import { createStructuredQuery } from '../../src/index'
 
 /** Standard "tags" fixture — static `all` + dynamic `byId` with a `moreInfo` sub-query */
-export const tags = createQueryOptions('tags', {
+export const tags = createStructuredQuery('tags', {
   all: {
     queryFn: () => Promise.resolve(['tag1', 'tag2']),
   },
   byId: (id: string) => ({
-    queryKey: [id],
+    params: [id],
     queryFn: () => Promise.resolve({ id, name: `Tag ${id}` }),
     subQueries: {
       moreInfo: {
@@ -18,12 +19,12 @@ export const tags = createQueryOptions('tags', {
 })
 
 /** Items fixture — static `all` + dynamic `byId` with `details` sub-query */
-export const items = createQueryOptions('items', {
+export const items = createStructuredQuery('items', {
   all: {
     queryFn: () => Promise.resolve(['a', 'b', 'c']),
   },
   byId: (id: string) => ({
-    queryKey: [id],
+    params: [id],
     queryFn: () => Promise.resolve({ id, name: `Item ${id}` }),
     subQueries: {
       details: {
@@ -34,7 +35,7 @@ export const items = createQueryOptions('items', {
 })
 
 /** Static infinite query fixture */
-export const infinitePages = createQueryOptions('pages', {
+export const infinitePages = createStructuredQuery('pages', {
   list: {
     queryFn: ({ pageParam }: { pageParam: number }) =>
       Promise.resolve({ items: [`page-${String(pageParam)}`], nextCursor: pageParam + 1 }),
@@ -45,9 +46,9 @@ export const infinitePages = createQueryOptions('pages', {
 
 /** Dynamic infinite query factory */
 export function createInfiniteSearch(scope: string) {
-  return createQueryOptions(scope, {
+  return createStructuredQuery(scope, {
     results: (term: string) => ({
-      queryKey: [term],
+      params: [term],
       queryFn: ({ pageParam }: { pageParam: number }) =>
         Promise.resolve({ results: [term], next: pageParam + 1 }),
       initialPageParam: 0,
@@ -57,9 +58,9 @@ export function createInfiniteSearch(scope: string) {
 }
 
 /** Deep nesting fixture — org → project → issue → comments */
-export const org = createQueryOptions('org', {
+export const org = createStructuredQuery('org', {
   byId: (orgId: string) => ({
-    queryKey: [orgId],
+    params: [orgId],
     queryFn: () => Promise.resolve({ orgId }),
     subQueries: {
       members: {
@@ -71,14 +72,14 @@ export const org = createQueryOptions('org', {
         },
       },
       project: (projectId: number) => ({
-        queryKey: [projectId],
+        params: [projectId],
         queryFn: () => Promise.resolve({ orgId, projectId }),
         subQueries: {
           tasks: {
             queryFn: () => Promise.resolve([{ task: 'build' }]),
           },
           issue: (issueId: string) => ({
-            queryKey: [issueId],
+            params: [issueId],
             queryFn: () => Promise.resolve({ orgId, projectId, issueId }),
             subQueries: {
               comments: {
@@ -91,6 +92,16 @@ export const org = createQueryOptions('org', {
     },
   }),
 })
+
+/** Conditional skipToken fixture — dynamic node with conditional queryFn */
+export function createConditionalQuery(scope: string) {
+  return createStructuredQuery(scope, {
+    byId: (id: string | undefined) => ({
+      params: [id ?? ''],
+      queryFn: id ? () => Promise.resolve({ id, name: `Item ${id}` }) : skipToken,
+    }),
+  })
+}
 
 /** Assert that a node has the required properties for useQuery/useSuspenseQuery */
 export function expectQueryNode(node: object) {

@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { QueryClient } from '@tanstack/query-core'
-import { queryOptions } from '@tanstack/react-query'
-import { createQueryOptions } from '../../src/index'
-import { tags, org, infinitePages, createInfiniteSearch } from './fixtures'
+import { QueryClient, skipToken } from '@tanstack/query-core'
+import { createStructuredQuery } from '../../src/index'
+import { tags, org, infinitePages, createInfiniteSearch, createConditionalQuery } from './fixtures'
 
 describe('TanStack Query core integration', () => {
   it('static node works with fetchQuery', async () => {
@@ -40,9 +39,9 @@ describe('TanStack Query core integration', () => {
 
   it('multi-segment dynamic node works with fetchQuery', async () => {
     const queryClient = new QueryClient()
-    const repos = createQueryOptions('repos', {
+    const repos = createStructuredQuery('repos', {
       byOwnerAndName: (p: { owner: string; name: string }) => ({
-        queryKey: [p.owner, p.name],
+        params: [p.owner, p.name],
         queryFn: () => Promise.resolve({ owner: p.owner, name: p.name }),
       }),
     })
@@ -247,17 +246,48 @@ describe('TanStack Query core integration', () => {
     })
   })
 
+  describe('skipToken conditional queries (US3 - T022)', () => {
+    it('resolved queryFn is skipToken symbol when parameter is undefined', () => {
+      const q = createConditionalQuery('skipTest')
+      const result = q.byId(undefined)
+      expect(result.queryFn).toBe(skipToken)
+    })
+
+    it('resolved queryFn is a function when parameter is provided', () => {
+      const q = createConditionalQuery('skipTest')
+      const result = q.byId('abc')
+      expect(typeof result.queryFn).toBe('function')
+    })
+
+    it('conditional node with queryFn produces correct data', async () => {
+      const queryClient = new QueryClient()
+      const q = createConditionalQuery('skipFetch')
+      const data = await queryClient.fetchQuery(q.byId('xyz'))
+      expect(data).toEqual({ id: 'xyz', name: 'Item xyz' })
+    })
+
+    it('static skipToken node preserves queryKey', () => {
+      const q = createStructuredQuery('skipStatic', {
+        maybe: {
+          queryFn: skipToken,
+        },
+      })
+      expect(q.maybe.queryKey).toEqual(['skipStatic', 'maybe'])
+      expect(q.maybe.queryFn).toBe(skipToken)
+    })
+  })
+
   describe('structural equivalence with queryOptions()', () => {
     const allQueryFn = () => Promise.resolve(['tag1', 'tag2'])
     const byIdQueryFn = (id: string) => () => Promise.resolve({ id, name: `Tag ${id}` })
     const moreInfoQueryFn = (id: string) => () => Promise.resolve({ id, details: 'extra info' })
 
-    const tagsForEquiv = createQueryOptions('tags', {
+    const tagsForEquiv = createStructuredQuery('tags', {
       all: {
         queryFn: allQueryFn,
       },
       byId: (id: string) => ({
-        queryKey: [id],
+        params: [id],
         queryFn: byIdQueryFn(id),
         subQueries: {
           moreInfo: {
@@ -278,29 +308,29 @@ describe('TanStack Query core integration', () => {
     }
 
     it('static node matches queryOptions() shape', () => {
-      const direct = queryOptions({ queryKey: ['tags', 'all'] as const, queryFn: allQueryFn })
+      const direct = { queryKey: ['tags', 'all'], queryFn: allQueryFn }
       expectStructuralMatch(tagsForEquiv.all, direct)
       expect(tagsForEquiv.all.queryFn).toBe(direct.queryFn)
     })
 
     it('parameterised node matches queryOptions() shape', () => {
-      const direct = queryOptions({
-        queryKey: ['tags', 'byId', '123'] as const,
+      const direct = {
+        queryKey: ['tags', 'byId', '123'],
         queryFn: byIdQueryFn('123'),
-      })
+      }
       expectStructuralMatch(tagsForEquiv.byId('123'), direct)
     })
 
     it('nested sub-query matches queryOptions() shape', () => {
-      const direct = queryOptions({
-        queryKey: ['tags', 'byId', '456', 'moreInfo'] as const,
+      const direct = {
+        queryKey: ['tags', 'byId', '456', 'moreInfo'],
         queryFn: moreInfoQueryFn('456'),
-      })
+      }
       expectStructuralMatch(tagsForEquiv.byId('456').$sub.moreInfo, direct)
     })
 
     it('static node passes through extra options', () => {
-      const withExtras = createQueryOptions('extras', {
+      const withExtras = createStructuredQuery('extras', {
         item: {
           queryFn: () => Promise.resolve('data'),
           staleTime: 5000,
@@ -310,14 +340,14 @@ describe('TanStack Query core integration', () => {
         },
       })
 
-      const direct = queryOptions({
-        queryKey: ['extras', 'item'] as const,
+      const direct = {
+        queryKey: ['extras', 'item'],
         queryFn: () => Promise.resolve('data'),
         staleTime: 5000,
         gcTime: 30000,
         retry: 3,
         enabled: false,
-      })
+      }
 
       expectStructuralMatch(withExtras.item, direct)
       expect(withExtras.item.staleTime).toBe(direct.staleTime)
@@ -327,21 +357,21 @@ describe('TanStack Query core integration', () => {
     })
 
     it('parameterised node passes through extra options', () => {
-      const withExtras = createQueryOptions('extras', {
+      const withExtras = createStructuredQuery('extras', {
         byId: (id: string) => ({
-          queryKey: [id],
+          params: [id],
           queryFn: () => Promise.resolve({ id }),
           staleTime: 10000,
-          retry: false as const,
+          retry: false,
         }),
       })
 
-      const direct = queryOptions({
-        queryKey: ['extras', 'byId', 'abc'] as const,
+      const direct = {
+        queryKey: ['extras', 'byId', 'abc'],
         queryFn: () => Promise.resolve({ id: 'abc' }),
         staleTime: 10000,
         retry: false,
-      })
+      }
 
       expectStructuralMatch(withExtras.byId('abc'), direct)
       expect(withExtras.byId('abc').staleTime).toBe(direct.staleTime)

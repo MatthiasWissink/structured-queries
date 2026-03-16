@@ -1,23 +1,107 @@
 import { describe, it, expectTypeOf } from 'vitest'
-import type { InfiniteData, dataTagSymbol } from '@tanstack/query-core'
-import { createQueryOptions } from '../../src/index'
+import type {
+  DataTag,
+  DefaultError,
+  InfiniteData,
+  QueryKey,
+  QueryObserverOptions,
+  dataTagSymbol,
+} from '@tanstack/query-core'
+import { skipToken } from '@tanstack/query-core'
+import { createStructuredQuery } from '../../src/index'
 import type { inferQueryKeys } from '../../src/index'
 
-describe('type-level tests for createQueryOptions', () => {
-  const tags = createQueryOptions('tags', {
+// ---------------------------------------------------------------------------
+// Type-level helper: ValidateChildNames / ReservedQueryKeys
+// ---------------------------------------------------------------------------
+
+/**
+ * Reserved property collision detection tests (US2 - T006).
+ * These verify that child query names colliding with QueryObserverOptions keys
+ * produce compile-time errors via ValidateChildNames.
+ */
+describe('reserved property collision detection', () => {
+  it('rejects child named "queryKey"', () => {
+    createStructuredQuery('x', {
+      items: {
+        subQueries: {
+          // @ts-expect-error - 'queryKey' collides with a reserved TanStack Query property
+          queryKey: { queryFn: () => Promise.resolve('oops') },
+        },
+      },
+    })
+  })
+
+  it('rejects child named "staleTime"', () => {
+    createStructuredQuery('x', {
+      items: {
+        subQueries: {
+          // @ts-expect-error - 'staleTime' collides with a reserved TanStack Query property
+          staleTime: { queryFn: () => Promise.resolve('oops') },
+        },
+      },
+    })
+  })
+
+  it('rejects child named "enabled"', () => {
+    createStructuredQuery('x', {
+      items: {
+        subQueries: {
+          // @ts-expect-error - 'enabled' collides with a reserved TanStack Query property
+          enabled: { queryFn: () => Promise.resolve('oops') },
+        },
+      },
+    })
+  })
+
+  it('allows valid (non-reserved) child names', () => {
+    const q = createStructuredQuery('x', {
+      items: {
+        subQueries: {
+          details: { queryFn: () => Promise.resolve('ok') },
+          metadata: { queryFn: () => Promise.resolve('ok') },
+        },
+      },
+    })
+    // Should compile without error and have proper types
+    expectTypeOf(q.items).toHaveProperty('queryKey')
+  })
+
+  it('rejects reserved names in dynamic node subQueries', () => {
+    createStructuredQuery('x', {
+      // @ts-expect-error - 'queryFn' collides with a reserved TanStack Query property
+      byId: (id: string) => ({
+        params: [id],
+        queryFn: () => Promise.resolve(id),
+        subQueries: {
+          queryFn: { queryFn: () => Promise.resolve('oops') },
+        },
+      }),
+    })
+  })
+
+  it('ReservedQueryKeys is derived from keyof QueryObserverOptions', () => {
+    // Verify a representative sample of QueryObserverOptions keys are reserved
+    type SampleReserved = 'queryKey' | 'queryFn' | 'staleTime' | 'gcTime' | 'enabled' | 'retry'
+    expectTypeOf<SampleReserved>().toExtend<keyof QueryObserverOptions>()
+  })
+})
+
+describe('type-level tests for createStructuredQuery', () => {
+  const tags = createStructuredQuery('tags', {
     all: {
       queryFn: () => Promise.resolve(['tag1', 'tag2']),
       staleTime: 60_000,
     },
     byId: (id: string) => ({
-      queryKey: [id],
+      params: [id],
       queryFn: () => Promise.resolve({ id, name: 'test' }),
       subQueries: {
         moreInfo: {
           queryFn: () => Promise.resolve({ details: 'info' }),
         },
         version: (v: number) => ({
-          queryKey: [v],
+          params: [v],
           queryFn: () => Promise.resolve({ id, version: v }),
         }),
       },
@@ -84,9 +168,9 @@ describe('type-level tests for createQueryOptions', () => {
   })
 
   it('multi-segment dynamic key types', () => {
-    const repos = createQueryOptions('repos', {
+    const repos = createStructuredQuery('repos', {
       byOwnerAndName: (p: { owner: string; name: string }) => ({
-        queryKey: [p.owner, p.name],
+        params: [p.owner, p.name],
         queryFn: () => Promise.resolve({ owner: p.owner, name: p.name }),
       }),
     })
@@ -100,20 +184,20 @@ describe('type-level tests for createQueryOptions', () => {
 
   it('inferQueryKeys extracts all key tuples', () => {
     type Keys = inferQueryKeys<typeof tags>
-    const _root: Keys = ['tags'] as const
-    const _all: Keys = ['tags', 'all'] as const
-    const _byId: Keys = ['tags', 'byId'] as const
-    const _byIdParam: Keys = ['tags', 'byId', '123'] as const
-    const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo'] as const
-    const _version: Keys = ['tags', 'byId', '123', 'version'] as const
-    const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2] as const
+    const _root: Keys = ['tags']
+    const _all: Keys = ['tags', 'all']
+    const _byId: Keys = ['tags', 'byId']
+    const _byIdParam: Keys = ['tags', 'byId', '123']
+    const _moreInfo: Keys = ['tags', 'byId', '123', 'moreInfo']
+    const _version: Keys = ['tags', 'byId', '123', 'version']
+    const _versionParam: Keys = ['tags', 'byId', '123', 'version', 2]
   })
 })
 
 describe('infinite query type inference', () => {
   type Page = { items: string[]; nextCursor: number }
 
-  const pages = createQueryOptions('pages', {
+  const pages = createStructuredQuery('pages', {
     list: {
       queryFn: ({ pageParam }: { pageParam: number }) =>
         Promise.resolve({ items: [`item-${String(pageParam)}`], nextCursor: pageParam + 1 }),
@@ -135,9 +219,9 @@ describe('infinite query type inference', () => {
   })
 
   it('dynamic infinite query node', () => {
-    const queries = createQueryOptions('search', {
+    const queries = createStructuredQuery('search', {
       results: (term: string) => ({
-        queryKey: [term],
+        params: [term],
         queryFn: ({ pageParam }: { pageParam: number }) =>
           Promise.resolve({ results: [term], next: pageParam + 1 }),
         initialPageParam: 0,
@@ -154,5 +238,81 @@ describe('infinite query type inference', () => {
     // The queryKey DataTag should brand data as InfiniteData
     type TaggedData = (typeof pages.list.queryKey)[dataTagSymbol]
     expectTypeOf<TaggedData>().toEqualTypeOf<InfiniteData<Page, number>>()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// skipToken type narrowing (US3 - T017)
+// ---------------------------------------------------------------------------
+
+describe('skipToken type narrowing', () => {
+  it('accepts skipToken as queryFn in a static leaf definition', () => {
+    const q = createStructuredQuery('cond', {
+      maybe: {
+        queryFn: skipToken,
+      },
+    })
+    expectTypeOf(q.maybe).toHaveProperty('queryKey')
+    expectTypeOf(q.maybe).toHaveProperty('queryFn')
+  })
+
+  it('resolved queryFn type includes SkipToken when defined with skipToken', () => {
+    const _q = createStructuredQuery('cond', {
+      maybe: {
+        queryFn: skipToken,
+      },
+    })
+    // SkipToken should be part of the resolved queryFn union
+    type MaybeQueryFn = (typeof _q.maybe)['queryFn']
+    expectTypeOf<typeof skipToken>().toExtend<MaybeQueryFn>()
+  })
+
+  it('dynamic node with conditional skipToken includes SkipToken in queryFn union', () => {
+    const q = createStructuredQuery('cond', {
+      byId: (id: string | undefined) => ({
+        params: [id ?? ''],
+        queryFn: id ? () => Promise.resolve({ id }) : skipToken,
+      }),
+    })
+    const _result = q.byId(undefined)
+    // SkipToken should be part of the queryFn union type
+    type ResultQueryFn = (typeof _result)['queryFn']
+    expectTypeOf<typeof skipToken>().toExtend<ResultQueryFn>()
+  })
+
+  it('skipToken queryFn is not assignable to a plain function type', () => {
+    const q = createStructuredQuery('cond', {
+      maybe: {
+        queryFn: skipToken,
+      },
+    })
+    // @ts-expect-error - SkipToken is not callable, cannot be assigned to a function
+    const _fn: (...args: unknown[]) => unknown = q.maybe.queryFn
+    void _fn
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DataTag structural compatibility (catches upstream signature changes)
+// ---------------------------------------------------------------------------
+
+describe('DataTag structural compatibility', () => {
+  const dtTags = createStructuredQuery('dt', {
+    all: { queryFn: () => Promise.resolve([]) },
+  })
+
+  it('DataTag-branded queryKey is assignable to QueryKey', () => {
+    expectTypeOf(dtTags.all.queryKey).toExtend<QueryKey>()
+    expectTypeOf(dtTags.queryKey).toExtend<QueryKey>()
+  })
+
+  it('DataTag accepts 3 type parameters (key, data, error)', () => {
+    type _Tag = DataTag<readonly ['test'], string, DefaultError>
+    expectTypeOf<_Tag>().toExtend<QueryKey>()
+  })
+
+  it('root queryKey DataTag brands unknown data', () => {
+    type RootTag = (typeof dtTags.queryKey)[typeof dataTagSymbol]
+    expectTypeOf<RootTag>().toEqualTypeOf<unknown>()
   })
 })

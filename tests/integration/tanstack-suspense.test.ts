@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { QueryClient } from '@tanstack/query-core'
-import { createQueryOptions } from '../../src/index'
+import { describe, it, expect, expectTypeOf } from 'vitest'
+import { QueryClient, skipToken } from '@tanstack/query-core'
+import { createStructuredQuery } from '../../src/index'
 import {
   items,
   infinitePages,
@@ -24,7 +24,7 @@ describe('TanStack Query suspense compatibility', () => {
     })
 
     it('options with staleTime/gcTime/retry pass through for suspense use', () => {
-      const withExtras = createQueryOptions('stale', {
+      const withExtras = createStructuredQuery('stale', {
         item: {
           queryFn: () => Promise.resolve('data'),
           staleTime: 5000,
@@ -62,6 +62,33 @@ describe('TanStack Query suspense compatibility', () => {
       const data = await queryClient.fetchInfiniteQuery(search.results('world'))
       expect(data.pages).toEqual([{ results: ['world'], next: 1 }])
       expect(data.pageParams).toEqual([0])
+    })
+  })
+
+  describe('skipToken + suspense incompatibility (US3 - T018)', () => {
+    it('skipToken node queryFn is not assignable to a function-only type', () => {
+      const q = createStructuredQuery('suspSkip', {
+        conditional: {
+          queryFn: skipToken,
+        },
+      })
+
+      // Suspense queries require queryFn to be a callable function, not SkipToken
+      // @ts-expect-error - SkipToken queryFn cannot satisfy a function-only type
+      const _fn: (...args: never[]) => Promise<unknown> = q.conditional.queryFn
+      void _fn
+    })
+
+    it('non-skipToken node queryFn IS assignable to a function type', () => {
+      const _q = createStructuredQuery('suspOk', {
+        always: {
+          queryFn: () => Promise.resolve('data'),
+        },
+      })
+
+      // Regular queryFn nodes should NOT include SkipToken in the union
+      type AlwaysQueryFn = (typeof _q.always)['queryFn']
+      expectTypeOf<typeof skipToken>().not.toExtend<AlwaysQueryFn>()
     })
   })
 })

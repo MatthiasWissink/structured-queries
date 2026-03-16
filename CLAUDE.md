@@ -1,4 +1,4 @@
-# structured-queries Development Guidelines
+﻿# structured-queries Development Guidelines
 
 Type-safe, hierarchical query options factories for TanStack Query.
 
@@ -15,8 +15,7 @@ Type-safe, hierarchical query options factories for TanStack Query.
 ```text
 src/
   index.ts          — public API re-exports
-  create.ts         — createQueryOptions factory
-  merge.ts          — mergeQueryOptions utility
+  create.ts         — createStructuredQuery factory
   types.ts          — shared types (inferQueryKeys)
 tests/
   unit/

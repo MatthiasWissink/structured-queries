@@ -1,17 +1,18 @@
 {
   "name": "structured-queries",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Type-safe, hierarchical query options factories for TanStack Query — define and organise your queries as a structured, composable tree.",
   "keywords": [
     "tanstack-query",
-    "react-query",
+    "vue-query",
+    "solid-query",
+    "angular-query",
     "query-options",
     "query-factory",
     "query-keys",
     "query-tree",
     "typescript",
     "type-safe",
-    "react",
     "data-fetching",
     "caching",
     "structured-queries"
@@ -59,10 +60,10 @@
     "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "peerDependencies": {
-    "@tanstack/react-query": ">=5.0.0"
+    "@tanstack/query-core": ">=5.0.0"
   },
   "devDependencies": {
-    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/query-core": "^5.90.20",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",
     "tsup": "^8.0.0",
