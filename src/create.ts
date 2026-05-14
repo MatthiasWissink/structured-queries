@@ -97,7 +97,8 @@ export function createStructuredQuery<
   definition: TDefinition,
 ): {
   queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-} & BuildTree<readonly [TScope], TDefinition> & TDefinition {
+} & BuildTree<readonly [TScope], TDefinition> &
+  TDefinition {
   const rootKey = [scope] as unknown as DataTag<readonly [TScope], unknown, DefaultError>
 
   const result: Record<string, unknown> = {
@@ -110,5 +111,6 @@ export function createStructuredQuery<
 
   return result as {
     queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-  } & BuildTree<readonly [TScope], TDefinition> & TDefinition
+  } & BuildTree<readonly [TScope], TDefinition> &
+    TDefinition
 }
