@@ -91,24 +91,26 @@ function buildNode(
  */
 export function createStructuredQuery<
   TScope extends string,
-  TDefinition extends Record<string, NodeDefinition>,
+  TDefinition extends Record<string, NodeDefinition> & ValidateDefinition<TDefinition>,
 >(
   scope: TScope,
-  definition: TDefinition & ValidateDefinition<TDefinition>,
+  definition: TDefinition,
 ): {
   queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-} & BuildTree<readonly [TScope], TDefinition> {
+} & BuildTree<readonly [TScope], TDefinition> &
+  TDefinition {
   const rootKey = [scope] as unknown as DataTag<readonly [TScope], unknown, DefaultError>
 
   const result: Record<string, unknown> = {
     queryKey: rootKey,
   }
 
-  for (const [name, def] of Object.entries(definition)) {
+  for (const [name, def] of Object.entries(definition as Record<string, NodeDefinition>)) {
     result[name] = buildNode([scope], name, def)
   }
 
   return result as {
     queryKey: DataTag<readonly [TScope], unknown, DefaultError>
-  } & BuildTree<readonly [TScope], TDefinition>
+  } & BuildTree<readonly [TScope], TDefinition> &
+    TDefinition
 }
