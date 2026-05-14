@@ -335,8 +335,8 @@ describe('createStructuredQuery', () => {
 
   it('throws on dynamic node missing params property', () => {
     expect(() => {
+      // @ts-expect-error - intentionally invalid for runtime test
       const q = createStructuredQuery('bad', {
-        // @ts-expect-error - intentionally invalid for runtime test
         broken: () => ({ queryFn: () => Promise.resolve('oops') }),
       })
       ;(q.broken as unknown as () => unknown)()
